@@ -1,0 +1,21 @@
+spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 60MB
+  jackson:
+    deserialization:
+      FAIL_ON_UNKNOWN_PROPERTIES: false
+
+analysis:
+  python:
+    base-url: http://localhost:8081
+    connect-timeout-ms: 5000
+    read-timeout-ms: 60000
+
+uploads:
+  voice-dir: uploads/voice
+
+logging:
+  level:
+    capstone.voicereport: DEBUG

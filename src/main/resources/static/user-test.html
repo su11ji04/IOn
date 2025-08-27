@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>User API 테스트</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root { --fg:#0b1020; --card:#f7f7fb; --muted:#666; --border:#d7d9e0; }
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; margin: 24px; line-height: 1.4; color: var(--fg); }
+        h1 { margin: 0 0 12px; }
+        fieldset { border: 1px solid var(--border); padding: 16px; margin-bottom: 24px; border-radius: 10px; background: var(--card); }
+        legend { padding: 0 8px; font-weight: 700; }
+        label { display: block; margin-top: 8px; }
+        input, select { padding: 10px 12px; border: 1px solid #bbb; border-radius: 8px; width: 100%; box-sizing: border-box; }
+        button { padding: 10px 14px; border: 1px solid #999; background: #fff; border-radius: 8px; cursor: pointer; }
+        button:hover { background: #f5f5f7; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .kids { margin-top: 12px; }
+        .kid-card { border: 1px dashed #bbb; padding: 12px; border-radius: 8px; margin-bottom: 12px; background:#fff; }
+        .muted { color: var(--muted); font-size: 12px; }
+        pre { background: #0b1020; color: #e8f0ff; padding: 12px; border-radius: 8px; overflow: auto; }
+        .right { text-align: right; }
+        .space { height: 6px; }
+        .warn { color:#b42318; font-weight:600; }
+    </style>
+</head>
+<body>
+
+<h1>User API 테스트 페이지</h1>
+<p class="muted">엔드포인트: <code>/api/users/register</code>, <code>/api/users/login</code>, <code>/api/users/{userId}</code>, <code>/api/users/by-email?email=...</code></p>
+
+<!-- 회원가입 -->
+<fieldset>
+    <legend>회원가입 (POST /api/users/register)</legend>
+
+    <div class="row">
+        <label>이메일
+            <input id="reg-email" type="email" placeholder="parent@example.com" required />
+        </label>
+        <label>비밀번호 (8~64자)
+            <input id="reg-password" type="password" placeholder="MySecurePw123!" required />
+        </label>
+    </div>
+
+    <div class="row">
+        <label>부모 닉네임
+            <input id="reg-parentNickname" type="text" placeholder="모담" required />
+        </label>
+        <label>개인정보 동의 (Int 0/1)
+            <select id="reg-pia">
+                <option value="1" selected>1 (동의)</option>
+                <option value="0">0 (미동의)</option>
+            </select>
+        </label>
+    </div>
+
+    <div class="row">
+        <label>목표 (선택)
+            <input id="reg-goal" type="text" placeholder="아이와 공감 대화 늘리기" />
+        </label>
+        <label>걱정 (선택)
+            <input id="reg-worry" type="text" placeholder="훈육 시 감정 조절" />
+        </label>
+    </div>
+
+    <h3>아이 정보 (kids)</h3>
+    <div id="kids" class="kids"></div>
+    <div class="right">
+        <button id="add-kid" type="button">+ 아이 추가</button>
+    </div>
+
+    <div class="right" style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+        <button id="btn-register" type="button">회원가입 요청</button>
+        <button id="fill-login" type="button" title="회원가입 이메일/비번을 로그인 폼에 채우기">로그인 폼 채우기</button>
+    </div>
+
+    <h4>요청 바디</h4>
+    <pre id="register-body"></pre>
+    <h4>응답 <span id="register-status" class="muted"></span></h4>
+    <pre id="register-resp"></pre>
+</fieldset>
+
+<!-- 로그인 -->
+<fieldset>
+    <legend>로그인 (POST /api/users/login)</legend>
+    <div class="row">
+        <label>이메일
+            <input id="login-email" type="email" placeholder="parent@example.com" required />
+        </label>
+        <label>비밀번호
+            <input id="login-password" type="password" placeholder="MySecurePw123!" required />
+        </label>
+    </div>
+    <div class="right" style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+        <button id="btn-login" type="button">로그인 요청</button>
+        <button id="use-userId" type="button" title="응답 userId를 아래 조회 섹션에 채웁니다">userId 채우기</button>
+    </div>
+
+    <h4>요청 바디</h4>
+    <pre id="login-body"></pre>
+    <h4>응답 <span id="login-status" class="muted"></span></h4>
+    <pre id="login-resp"></pre>
+</fieldset>
+
+<!-- 사용자 조회 (id) -->
+<fieldset>
+    <legend>사용자 조회 (GET /api/users/{userId})</legend>
+    <div class="row">
+        <label>userId
+            <input id="get-userId" type="number" placeholder="1" />
+        </label>
+    </div>
+    <div class="right" style="margin-top:12px">
+        <button id="btn-getUser" type="button">조회 요청</button>
+    </div>
+
+    <h4>응답 <span id="get-status" class="muted"></span></h4>
+    <pre id="get-resp"></pre>
+</fieldset>
+
+<!-- 사용자 조회 (email) -->
+<fieldset>
+    <legend>사용자 조회 (GET /api/users/by-email?email=...)</legend>
+    <div class="row">
+        <label>email
+            <input id="get-email" type="email" placeholder="parent@example.com" />
+        </label>
+    </div>
+    <div class="right" style="margin-top:12px">
+        <button id="btn-getUserByEmail" type="button">이메일로 조회</button>
+    </div>
+
+    <h4>응답 <span id="get-by-email-status" class="muted"></span></h4>
+    <pre id="get-by-email-resp"></pre>
+</fieldset>
+
+<script>
+    // ------- 유틸 -------
+    const $ = (id) => document.getElementById(id);
+    const pretty = (obj) => typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+    const setResp = (preEl, statusEl, res, bodyText) => {
+        statusEl.textContent = `[HTTP ${res.status}]`;
+        preEl.textContent = (res.ok ? '' : `[ERROR ${res.status}] `) + bodyText;
+    };
+    const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
+    // ------- 아이 블록 추가/읽기 -------
+    function kidBlockTemplate(index) {
+        return `
+      <div class="kid-card" data-idx="${index}">
+        <div class="row-3">
+          <label>kidsId (선택)
+            <input type="number" class="kid-kidsId" placeholder="예: 1" />
+          </label>
+          <label>닉네임*
+            <input type="text" class="kid-nickname" placeholder="도담" required />
+          </label>
+          <label>나이*
+            <input type="number" class="kid-age" placeholder="5" required />
+          </label>
+        </div>
+        <div class="row">
+          <label>성향
+            <input type="text" class="kid-tendency" placeholder="활발/차분/..." />
+          </label>
+          <label>비고
+            <input type="text" class="kid-note" placeholder="낯가림 없음 등" />
+          </label>
+        </div>
+        <div class="right" style="margin-top:8px">
+          <button type="button" class="btn-del-kid">삭제</button>
+        </div>
+      </div>
+    `;
+    }
+
+    function refreshKidDeleteHandlers() {
+        document.querySelectorAll('.btn-del-kid').forEach(btn => {
+            btn.onclick = (e) => e.target.closest('.kid-card')?.remove();
+        });
+    }
+
+    function readKids() {
+        return Array.from(document.querySelectorAll('.kid-card')).map(card => {
+            const getVal = (sel) => card.querySelector(sel)?.value?.trim();
+            const kidsIdRaw = getVal('.kid-kidsId');
+            const nickname = getVal('.kid-nickname');
+            const ageRaw = getVal('.kid-age');
+            const tendency = getVal('.kid-tendency') || null;
+            const note = getVal('.kid-note') || null;
+            return {
+                kidsId: kidsIdRaw ? Number(kidsIdRaw) : undefined,
+                nickname,
+                age: ageRaw ? Number(ageRaw) : undefined,
+                tendency,
+                note
+            };
+        });
+    }
+
+    // 초기 하나 추가
+    (function initKids() {
+        const wrap = $('kids');
+        wrap.insertAdjacentHTML('beforeend', kidBlockTemplate(0));
+        refreshKidDeleteHandlers();
+    })();
+
+    $('add-kid').onclick = () => {
+        const wrap = $('kids');
+        const idx = document.querySelectorAll('.kid-card').length;
+        wrap.insertAdjacentHTML('beforeend', kidBlockTemplate(idx));
+        refreshKidDeleteHandlers();
+    };
+
+    // ------- 회원가입 -------
+    $('btn-register').onclick = async () => {
+        const email = $('reg-email').value.trim();
+        if (!isEmail(email)) { $('register-resp').textContent = '⚠ 잘못된 이메일 형식입니다.'; return; }
+
+        const payload = {
+            email,
+            password: $('reg-password').value,
+            parentNickname: $('reg-parentNickname').value.trim(),
+            goal: $('reg-goal').value.trim() || null,
+            worry: $('reg-worry').value.trim() || null,
+            personalInformationAgree: Number($('reg-pia').value),
+            kids: readKids()
+        };
+
+        $('register-body').textContent = pretty(payload);
+
+        try {
+            const res = await fetch('/api/users/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const text = await res.text();
+            let json; try { json = JSON.parse(text); } catch { json = text; }
+            setResp($('register-resp'), $('register-status'), res, pretty(json));
+
+            // 성공 시 로그인 폼/조회 이메일 자동 채우기 & userId 세팅
+            if (res.ok && json && json.email) {
+                $('login-email').value = json.email;
+                $('get-email').value = json.email;
+            }
+            if (res.ok && json && json.userId) {
+                $('get-userId').value = json.userId;
+            }
+        } catch (e) {
+            $('register-resp').textContent = '요청 실패: ' + e;
+            $('register-status').textContent = '';
+        }
+    };
+
+    // 회원가입 → 로그인 폼 채우기
+    $('fill-login').onclick = () => {
+        $('login-email').value = $('reg-email').value.trim();
+        $('login-password').value = $('reg-password').value;
+    };
+
+    // ------- 로그인 -------
+    let lastLoginJson = null;
+
+    $('btn-login').onclick = async () => {
+        const email = $('login-email').value.trim();
+        if (!isEmail(email)) { $('login-resp').textContent = '⚠ 잘못된 이메일 형식입니다.'; return; }
+
+        const payload = { email, password: $('login-password').value };
+        $('login-body').textContent = pretty(payload);
+
+        try {
+            const res = await fetch('/api/users/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const text = await res.text();
+            let json; try { json = JSON.parse(text); } catch { json = text; }
+            lastLoginJson = json;
+            setResp($('login-resp'), $('login-status'), res, pretty(json));
+
+            // 성공 시 userId/이메일 자동 채움
+            if (res.ok && json && json.userId) $('get-userId').value = json.userId;
+            if (res.ok && json && json.email) $('get-email').value = json.email;
+        } catch (e) {
+            $('login-resp').textContent = '요청 실패: ' + e;
+            $('login-status').textContent = '';
+        }
+    };
+
+    // 로그인 응답의 userId를 아래 폼에 채우기
+    $('use-userId').onclick = () => {
+        if (lastLoginJson && lastLoginJson.userId) {
+            $('get-userId').value = lastLoginJson.userId;
+        } else {
+            alert('먼저 로그인하여 userId가 포함된 응답을 받아주세요.');
+        }
+    };
+
+    // ------- 사용자 조회 (id) -------
+    $('btn-getUser').onclick = async () => {
+        const userId = Number($('get-userId').value);
+        if (!userId) { $('get-resp').textContent = 'userId를 입력하세요'; return; }
+
+        try {
+            const res = await fetch(`/api/users/${userId}`);
+            const text = await res.text();
+            let json; try { json = JSON.parse(text); } catch { json = text; }
+            setResp($('get-resp'), $('get-status'), res, pretty(json));
+        } catch (e) {
+            $('get-resp').textContent = '요청 실패: ' + e;
+            $('get-status').textContent = '';
+        }
+    };
+
+    // ------- 사용자 조회 (email) -------
+    $('btn-getUserByEmail').onclick = async () => {
+        const email = $('get-email').value.trim();
+        if (!isEmail(email)) { $('get-by-email-resp').textContent = '⚠ 잘못된 이메일 형식입니다.'; return; }
+
+        try {
+            const res = await fetch(`/api/users/by-email?email=${encodeURIComponent(email)}`);
+            const text = await res.text();
+            let json; try { json = JSON.parse(text); } catch { json = text; }
+            setResp($('get-by-email-resp'), $('get-by-email-status'), res, pretty(json));
+        } catch (e) {
+            $('get-by-email-resp').textContent = '요청 실패: ' + e;
+            $('get-by-email-status').textContent = '';
+        }
+    };
+</script>
+</body>
+</html>
