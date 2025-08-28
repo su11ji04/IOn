@@ -11,10 +11,10 @@ pydantic>=2.7
 # 데이터/오디오
 pandas==2.3.2
 numpy>=1.26,<3
-scipy>=1.11          # librosa/pyannote가 필요로 함
+scipy>=1.11
 soundfile
 librosa==0.10.2.post1
-transformers>=4.41.0 # pyannote 3.1.1과 호환
+transformers>=4.41.0
 
 # STT (whisper)
 openai-whisper==20231117

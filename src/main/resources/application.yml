@@ -47,3 +47,13 @@ uploads:
 userprofile:
   csvPath: "C:/Users/82103/Desktop/initial/src/main/resources/capstone/data/user_profiles.csv"
   csvCharset: "UTF-8"
+
+
+chatbot:
+  python:
+    base-url: http://localhost:8082
+    connect-timeout-ms: 5000
+    read-timeout-ms: 60000
+
+
+
