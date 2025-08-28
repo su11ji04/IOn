@@ -29,13 +29,14 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-	implementation("org.springframework.security:spring-security-crypto") // BCrypt
 	runtimeOnly("com.h2database:h2")
+	implementation("org.springframework.security:spring-security-crypto") // BCrypt
 	compileOnly("org.projectlombok:lombok")
 	annotationProcessor("org.projectlombok:lombok")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	implementation("org.springframework.boot:spring-boot-starter-webflux")   // WebClient
 	implementation("org.springframework.boot:spring-boot-starter-validation")
+	implementation ("org.apache.commons:commons-csv:1.11.0")
 }
 
 tasks.withType<Test> {

@@ -1,8 +1,9 @@
 package capstone.config;
 
+import capstone.support.userprofile.UserProfileProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(AnalysisPythonProperties.class)
+@EnableConfigurationProperties({UserProfileProperties.class})
 public class AppPropertiesConfig {}

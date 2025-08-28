@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "voice_reports")
+@Table(name = "voice_report")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class VoiceReport {
 
@@ -32,7 +32,7 @@ public class VoiceReport {
     @Column(length = 200)
     private String subTitle;
 
-    @Column(length = 30)
+    @Column(name = "report_day", length = 30)
     private String day;
     @PrePersist
     public void prePersist() {

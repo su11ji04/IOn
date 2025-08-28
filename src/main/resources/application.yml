@@ -3,19 +3,47 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 60MB
+
   jackson:
     deserialization:
       FAIL_ON_UNKNOWN_PROPERTIES: false
 
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  sql:
+    init:
+      mode: never   # 또는 아예 제거
+
+logging:
+  level:
+    reactor.netty.http.client: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG
+    org.springframework.web.reactive.function.client.ExchangeFunctions: TRACE
+
 analysis:
   python:
-    base-url: http://localhost:8081
-    connect-timeout-ms: 5000
-    read-timeout-ms: 60000
+    baseUrl: http://localhost:8081
+    connectTimeoutMs: 5000
+    readTimeoutMs: 500000000
 
 uploads:
   voice-dir: uploads/voice
 
-logging:
-  level:
-    capstone.voicereport: DEBUG
+
+userprofile:
+  csvPath: "C:/Users/82103/Desktop/initial/src/main/resources/capstone/data/user_profiles.csv"
+  csvCharset: "UTF-8"

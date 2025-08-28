@@ -1,76 +1,122 @@
-// capstone.voicereport.service.PythonAnalysisClient.java
+// capstone/voicereport/service/PythonAnalysisClient.java
 package capstone.voicereport.service;
 
 import capstone.voicereport.dto.AnalysisReportDto;
-import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
-import reactor.core.publisher.Mono;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.Map;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class PythonAnalysisClient {
 
+    private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(10);
+
     private final WebClient webClient;
+    private final ObjectMapper objectMapper;
 
-    /**
-     * 파이썬 분석 서버에 multipart/form-data로 오디오와 메타를 보내고,
-     * AnalysisReportDto(JSON)를 받아옵니다.
-     *
-     * @param audioBytes 업로드 오디오 바이트
-     * @param filename   원본 파일명(확장자 포함 권장: .wav)
-     * @param subTitle   리포트 소제목
-     * @param userIdOrNull  "u123" 같이 프리픽스 포함 문자열 또는 null
-     * @return 정상 수신 시 AnalysisReportDto, 실패 시 null
-     */
-    public AnalysisReportDto analyze(byte[] audioBytes,
-                                     String filename,
-                                     String subTitle,
-                                     String userIdOrNull) {
+    // ✅ 생성자에 @Qualifier로 주입
+    public PythonAnalysisClient(
+            @Qualifier("pythonAnalyzerWebClient") WebClient webClient,
+            ObjectMapper objectMapper
+    ) {
+        this.webClient = webClient;
+        this.objectMapper = objectMapper;
+    }
 
+    public AnalysisReportDto analyze(
+            byte[] audioBytes,
+            String filename,
+            String userIdOrNull,
+            Map<String, Object> userProfileMap
+    ) {
         MultipartBodyBuilder body = new MultipartBodyBuilder();
 
-        // 파일 파트
+        String safeName = (filename != null && !filename.isBlank()) ? filename : "audio.wav";
         body.part("audio", new ByteArrayResource(audioBytes) {
-                    @Override public String getFilename() {
-                        return (filename != null && !filename.isBlank()) ? filename : "audio.wav";
-                    }
+                    @Override public String getFilename() { return safeName; }
                 })
-                .contentType(MediaType.APPLICATION_OCTET_STREAM);
+                .filename(safeName)
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE);
 
-        // 폼 파트
-        body.part("subTitle", subTitle != null ? subTitle : "");
-        if (userIdOrNull != null) {
-            body.part("user_id", userIdOrNull);
+        if (userIdOrNull != null && !userIdOrNull.isBlank()) {
+            body.part("user_id", userIdOrNull)
+                    .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
+        }
+
+        if (userProfileMap != null && !userProfileMap.isEmpty()) {
+            try {
+                String json = objectMapper.writeValueAsString(userProfileMap);
+                log.info("[PY-SEND] user_profile_json length(bytes UTF-8)={}", json.getBytes(StandardCharsets.UTF_8).length);
+                log.info("[PY-SEND] user_profile_json preview={}", json.substring(0, Math.min(200, json.length())));
+                body.part("user_profile_json", json)
+                        .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
+            } catch (Exception e) {
+                log.warn("Failed to serialize userProfileMap: {}", e.toString());
+            }
+        } else {
+            log.warn("[PY-SEND] user_profile_map is empty -> NOT sending user_profile_json");
         }
 
         try {
-            return webClient.post()
+            String bodyStr = webClient.post()
                     .uri("/analyze")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .bodyValue(body.build())
-                    .retrieve()
-                    .bodyToMono(AnalysisReportDto.class)
-                    // 네트워크/역직렬화 에러는 service에서 graceful 하게 처리할 수 있도록 null로 바꿔줌
-                    .onErrorResume(WebClientResponseException.class, e -> {
-                        log.warn("Python analysis HTTP error: status={}, body={}",
-                                e.getRawStatusCode(), e.getResponseBodyAsString());
-                        return Mono.empty();
-                    })
-                    .onErrorResume(Exception.class, e -> {
-                        log.warn("Python analysis call failed: {}", e.toString());
-                        return Mono.empty();
-                    })
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(BodyInserters.fromMultipartData(body.build()))
+                    .exchangeToMono(res -> res.bodyToMono(String.class)
+                            .defaultIfEmpty("")
+                            .map(s -> {
+                                HttpStatusCode code = res.statusCode(); // ✅ 타입 교정
+                                log.info("[STEP4][PY-RECV] status={}, body.len={}, preview={}",
+                                        code.value(), s.length(),
+                                        s.substring(0, Math.min(200, s.length())));
+                                if (!code.is2xxSuccessful()) {
+                                    throw new RuntimeException("Python HTTP " + code.value() + " body: " + s);
+                                }
+                                return s;
+                            })
+                    )
+                    .timeout(REQUEST_TIMEOUT)
+                    .doOnError(err -> log.error("[STEP4][PY-ERR] {}", err.toString(), err))
                     .block();
+
+            if (bodyStr == null || bodyStr.isBlank()) {
+                log.warn("[STEP4][PY-RECV] empty body from Python");
+                return null;
+            }
+
+            AnalysisReportDto ar = objectMapper.readValue(bodyStr, AnalysisReportDto.class);
+
+            if (ar != null) {
+                log.info("[STEP4][SVC] Python 응답 매핑 OK: subTitle={}, lenSeconds={}, summary?={}, freq?={}, expr?={}, timelineLen={}",
+                        ar.getSubTitle(),
+                        ar.getLength(),
+                        ar.getConversationSummary() != null,
+                        ar.getFrequency() != null,
+                        ar.getExpression() != null,
+                        (ar.getEmotion() != null && ar.getEmotion().getTimeline() != null)
+                                ? ar.getEmotion().getTimeline().size() : 0
+                );
+            } else {
+                log.warn("[STEP4][SVC] parsed AnalysisReportDto is null");
+            }
+            return ar;
+
         } catch (Exception e) {
-            // block() 중 인터럽트 등 예외
-            log.warn("Python analysis unexpected failure: {}", e.toString());
+            log.error("[STEP4][PY->SVC] parse or call failed: {}", e.toString(), e);
             return null;
         }
     }

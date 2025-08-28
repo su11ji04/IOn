@@ -12,3 +12,5 @@ public class EmotionPoint {
     @Column(length = 100)
     private String momentEmotion; // "기쁨/화남/..." 등
 }
+
+

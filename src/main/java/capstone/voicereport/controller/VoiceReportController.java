@@ -3,7 +3,7 @@ package capstone.voicereport.controller;
 import capstone.voicereport.dto.CreateVoiceReportRequest;
 import capstone.voicereport.dto.VoiceReportResponse;
 import capstone.voicereport.service.VoiceReportService;
-import jakarta.validation.Valid;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.data.domain.Page;
@@ -11,11 +11,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
+import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/voice-reports")
@@ -25,28 +26,18 @@ public class VoiceReportController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<VoiceReportResponse> create(
-            @RequestPart("audio") MultipartFile audio,
-            @Valid @RequestPart("request") CreateVoiceReportRequest request
+            @RequestPart("audio") MultipartFile audio
     ) throws IOException {
-        VoiceReportResponse res = voiceReportService.create(audio, request);
+
+        // [STEP1] 컨트롤러가 오디오를 받았는지 1차 확인
+        log.info("[STEP1][CTRL] received audio: name={}, size={}, contentType={}",
+                audio.getOriginalFilename(), audio.getSize(), audio.getContentType());
+
+        VoiceReportResponse res = voiceReportService.createWithFixedUser(audio);
         return ResponseEntity.status(HttpStatus.CREATED).body(res);
     }
 
-    // day는 엔티티 @PrePersist에서 자동 세팅되므로 받지 않습니다.
-    @PostMapping(path = "/simple", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<VoiceReportResponse> createSimple(
-            @RequestPart("audio") MultipartFile audio,
-            @RequestParam("subTitle") String subTitle,
-            @RequestParam(value = "userId", required = false) Long userId
-    ) throws IOException {
-        var req = CreateVoiceReportRequest.builder()
-                .subTitle(subTitle)
-                .userId(userId)
-                .build();
 
-        VoiceReportResponse res = voiceReportService.create(audio, req);
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
-    }
 
     @GetMapping("/{id}")
     public ResponseEntity<VoiceReportResponse> get(@PathVariable("id") Long id) {
