@@ -2,6 +2,7 @@
 pandas
 numpy
 scikit-learn
+fastapi
 
 # 임베딩 및 유사 문서 검색
 langchain
@@ -20,3 +21,12 @@ tqdm
 
 # 토큰화 및 텍스트 처리
 tiktoken
+
+# PyTorch (최소 2.6 이상 필요 — CVE-2025-32434 대응)
+torch==2.6.0
+torchaudio==2.6.0
+torchvision==0.21.0
+safetensors
+
+
+uvicorn[standard]

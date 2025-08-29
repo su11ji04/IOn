@@ -1,11 +1,13 @@
-import os
 from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from embedding_retrieval import retrieve_relevant_context
 from generate_response import generate_chat_response
+from openai import OpenAI
 
 class UserProfile(BaseModel):
     child_age: Optional[int] = None
@@ -84,4 +86,19 @@ def chat_ask(payload: ChatAskPayload):
 
 if __name__ == "__main__":
     import uvicorn
+
+    # ✅ OpenAI API key 체크
+    try:
+        api_key = open("keys/openai_key.txt", "r", encoding="utf-8").read().strip()
+        client = OpenAI(api_key=api_key)
+
+        client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=5,
+        )
+        print("[OPENAI] startup sanity: OK")
+    except Exception as e:
+        print(f"[OPENAI] startup sanity: FAIL -> {e}")
+
     uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8082)), reload=True)

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<title>Voice Report Test</title>
+<style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:24px}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-top:16px}
+    .row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+    label{min-width:120px}
+    pre{white-space:pre-wrap}
+</style>
+<h1>음성 분석 업로드</h1>
+<form id="f" class="card">
+    <div class="row"><label>오디오</label><input type="file" name="audio" accept="audio/*" required></div>
+    <div class="row"><label>제목</label><input type="text" name="subTitle" placeholder="제목 없음"></div>
+    <div class="row"><label>날짜</label><input type="date" name="day"></div>
+    <div class="row"><label>user_id</label><input type="text" name="user_id" value="u001"></div>
+    <div class="row"><label>user_profile_json</label><textarea name="user_profile_json" rows="4" style="width:100%">{ "child_age": 4, "parenting_style": "자유방임형", "parenting_goal": "자율성", "child_traits": "예민함", "preferred_tone": "부드럽고 따뜻한", "language": "Korean", "health_issues": "없음", "user_id":"u001" }</textarea></div>
+    <button>업로드</button>
+</form>
+
+<h2>결과</h2>
+<div id="out" class="card"><em>아직 결과 없음</em></div>
+
+<script>
+    const $ = (s)=>document.querySelector(s);
+    $("#f").addEventListener("submit", async (e)=>{
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        try{
+            const res = await fetch("http://localhost:8081/analyze", { method:"POST", body: fd });
+            const txt = await res.text(); // 우선 원문 그대로 표시
+            let pretty = txt;
+            try{ pretty = JSON.stringify(JSON.parse(txt), null, 2); }catch{}
+            $("#out").innerHTML = `<pre>${pretty}</pre>`;
+        }catch(err){
+            $("#out").innerHTML = `<pre>ERROR: ${err}</pre>`;
+        }
+    });
+</script>

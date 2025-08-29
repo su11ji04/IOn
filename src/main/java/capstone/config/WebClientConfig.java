@@ -14,6 +14,9 @@ import reactor.netty.http.client.HttpClient;
 import java.util.concurrent.TimeUnit;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 @Configuration
 @RequiredArgsConstructor                                           // ✅ props 생성자 주입
@@ -21,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 public class WebClientConfig {
 
     private final ChatbotPythonProperties props;
+    private static final Logger log = LoggerFactory.getLogger(WebClientConfig.class);
 
     @Bean(name = "pythonAnalyzerWebClient")
     public WebClient pythonAnalyzerWebClient() {
@@ -43,8 +47,14 @@ public class WebClientConfig {
                     conn.addHandlerLast(new WriteTimeoutHandler(props.getReadTimeoutMs(), TimeUnit.MILLISECONDS));
                 });
 
+        String base = props.getBaseUrl();
+        log.info("[CHATBOT] Using baseUrl={}", props.getBaseUrl());
+        if (base == null || !(base.startsWith("http://") || base.startsWith("https://"))) {
+            throw new IllegalArgumentException("chatbot.python.base-url must start with http:// or https:// : " + base);
+        }
+
         return WebClient.builder()
-                .baseUrl(props.getBaseUrl()) // application.yml 의 chatbot.python.base-url 필요
+                .baseUrl(base)   // ✅ props에서 읽어오기
                 .clientConnector(new ReactorClientHttpConnector(http))
                 .defaultHeaders(h -> h.setContentType(MediaType.APPLICATION_JSON))
                 .exchangeStrategies(ExchangeStrategies.builder()
@@ -52,5 +62,6 @@ public class WebClientConfig {
                         .build())
                 .build();
     }
+
 
 }

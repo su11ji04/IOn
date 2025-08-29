@@ -51,9 +51,10 @@ userprofile:
 
 chatbot:
   python:
-    base-url: http://localhost:8082
-    connect-timeout-ms: 5000
-    read-timeout-ms: 60000
+    base-url: http://127.0.0.1:8082
+    read-timeout-ms: 600000   # 10분
+
+
 
 
 

@@ -1,8 +1,10 @@
 from openai import OpenAI
 
 def load_api_key_from_file(path="keys/openai_key.txt"):
-    with open(path, "r") as f:
-        return f.read().strip()
+    with open(path, "r", encoding="utf-8") as f:
+        k = f.read().strip()
+    print(f"[OPENAI] loaded key prefix={k[:8]}..., len={len(k)}")  # 임시 로그
+    return k
 
 api_key = load_api_key_from_file()
 client = OpenAI(api_key=api_key)
@@ -47,7 +49,7 @@ def generate_chat_response(question: str, combined_context: str, user_info: dict
 """
 
     response = client.chat.completions.create(
-        model="gpt-4.1-mini-2025-04-14",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "당신은 육아 상담 챗봇입니다."},
             {"role": "user", "content": prompt}
