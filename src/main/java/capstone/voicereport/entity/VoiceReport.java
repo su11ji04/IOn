@@ -22,18 +22,21 @@ public class VoiceReport {
     @JoinColumn(name = "user_id")
     private User user;
 
-    @Column(length = 255)
+    @Column(name = "audio_original_name", length = 255)
     private String audioOriginalName;
-    @Column(length = 100)
+
+    @Column(name = "audio_size") // length 속성 제거(숫자형엔 의미 없음)
     private long audioSize;
-    @Column(length = 500)
+
+    @Column(name = "audio_path", length = 500)
     private String audioPath;
 
-    @Column(length = 200)
+    @Column(name = "sub_title", length = 200)
     private String subTitle;
 
     @Column(name = "report_day", length = 30)
     private String day;
+
     @PrePersist
     public void prePersist() {
         if (this.day == null) {
@@ -41,43 +44,51 @@ public class VoiceReport {
         }
     }
 
-    @Column(length = 4000)
+    @Column(name = "conversation_summary", length = 4000)
     private String conversationSummary;
 
+    @Column(name = "length_seconds")
     private Integer lengthSeconds;
 
-    @Column(length = 2000)
+    @Column(name = "overall_feedback", length = 2000)
     private String overallFeedback;
 
+    // === Embedded: Frequency ===
     @Embedded
     private Frequency frequency;
 
+    // === Embedded: Expression ===
     @Embedded
     private Expression expression;
 
+    // === Emotion timeline ===
     @ElementCollection
-    @CollectionTable(name = "voice_report_emotion_timeline", joinColumns = @JoinColumn(name = "report_id"))
+    @CollectionTable(name = "voice_report_emotion_timeline",
+            joinColumns = @JoinColumn(name = "report_id"))
     private List<EmotionPoint> emotionTimeline = new ArrayList<>();
 
-    @Column(length = 2000)
+    @Column(name = "emotion_feedback", length = 2000)
     private String emotionFeedback;
 
-    @Column(length = 500)
+    @Column(name = "kid_attitude", length = 500)
     private String kidAttitude;
 
     @ElementCollection
-    @CollectionTable(name = "voice_report_change_proposal", joinColumns = @JoinColumn(name = "report_id"))
+    @CollectionTable(name = "voice_report_change_proposal",
+            joinColumns = @JoinColumn(name = "report_id"))
     private List<ChangeProposal> changeProposals = new ArrayList<>();
 
-    @Column(length = 1000)
+    @Column(name = "pattern", length = 1000)
     private String pattern;
 
-    @Column(length = 1000)
+    @Column(name = "strength", length = 1000)
     private String strength;
 
     @CreationTimestamp
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 
     @UpdateTimestamp
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 }

@@ -7,16 +7,19 @@ import lombok.*;
 @Embeddable
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Expression {
-    @Column(length = 1000)
+
+    @Column(name = "parent_expression", length = 1000)
     private String parentExpression;
-    @Column(length = 1000)
+
+    @Column(name = "kid_expression", length = 1000)
     private String kidExpression;
 
-    @Column(length = 1000)
+    @Column(name = "parent_conditions", length = 1000)
     private String parentConditions;
-    @Column(length = 1000)
+
+    @Column(name = "kid_conditions", length = 1000)
     private String kidConditions;
 
-    @Column(length = 1000)
+    @Column(name = "expression_feedback", length = 1000)
     private String expressionFeedback;
 }

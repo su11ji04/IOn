@@ -7,9 +7,13 @@ import lombok.*;
 @Embeddable
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Frequency {
-    private Integer parentFrequency;   // 0~100
-    private Integer kidFrequency;      // 0~100
-    @Column(length = 1000)
+
+    @Column(name = "parent_frequency")
+    private Integer parentFrequency;
+
+    @Column(name = "kid_frequency")
+    private Integer kidFrequency;
+
+    @Column(name = "frequency_feedback", length = 1000)
     private String frequencyFeedback;
 }
-

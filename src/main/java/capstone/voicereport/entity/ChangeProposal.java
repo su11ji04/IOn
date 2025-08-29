@@ -7,8 +7,11 @@ import lombok.*;
 @Embeddable
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ChangeProposal {
-    @Column(length = 1000)
+
+    @Column(name = "existing_expression", length = 1000)
     private String existingExpression;
-    @Column(length = 1000)
+
+    @Column(name = "proposal_expression", length = 1000)
     private String proposalExpression;
 }
+

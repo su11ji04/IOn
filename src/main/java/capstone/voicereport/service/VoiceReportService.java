@@ -269,4 +269,29 @@ public class VoiceReportService {
     private static String nullToFallback(String v, String fallback) {
         return (v == null || v.isBlank()) ? fallback : v;
     }
+
+
+    @Transactional
+    protected User ensureUserFromCsvProfile(String userIdFromCsv, Map<String, Object> profile) {
+        // CSV에 email 컬럼이 없다면 규칙 메일로 생성
+        String email = Optional.ofNullable(profile.get("email"))
+                .map(Object::toString)
+                .filter(s -> !s.isBlank())
+                .orElseGet(() -> userIdFromCsv + "@dev.local");
+
+        return userRepository.findByEmail(email).orElseGet(() -> {
+            User u = new User();
+            u.setEmail(email);
+            u.setParentNickname(
+                    Optional.ofNullable(profile.get("parent_nickname"))
+                            .map(Object::toString)
+                            .orElse(userIdFromCsv)
+            );
+            u.setGoal(Optional.ofNullable(profile.get("parenting_goal")).map(Object::toString).orElse("dev"));
+            u.setWorry(Optional.ofNullable(profile.get("worry")).map(Object::toString).orElse("dev"));
+            u.setPasswordHash("{noop}dev");      // 개발용 더미
+            u.setPersonalInformationAgree(1);    // 개발용 동의
+            return userRepository.save(u);
+        });
+    }
 }
