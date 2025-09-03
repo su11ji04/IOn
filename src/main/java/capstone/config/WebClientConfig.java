@@ -1,8 +1,12 @@
 package capstone.config;
 
 import capstone.chatbot.config.ChatbotPythonProperties;
+import capstone.workbook.config.WorkbookPythonProperties;   // ✅ 추가
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.handler.timeout.WriteTimeoutHandler;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,33 +15,34 @@ import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
-import java.util.concurrent.TimeUnit;
-import java.time.Duration;
-import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 @Configuration
-@RequiredArgsConstructor                                           // ✅ props 생성자 주입
-@EnableConfigurationProperties(ChatbotPythonProperties.class)
+@RequiredArgsConstructor
+@EnableConfigurationProperties({
+        ChatbotPythonProperties.class,          // ✅ 쉼표로 구분
+        WorkbookPythonProperties.class          // ✅ 중괄호로 감싸기
+})
 public class WebClientConfig {
 
     private final ChatbotPythonProperties props;
+    private final WorkbookPythonProperties workbookProps;   // ✅ 주입 대상
+
     private static final Logger log = LoggerFactory.getLogger(WebClientConfig.class);
 
     @Bean(name = "pythonAnalyzerWebClient")
     public WebClient pythonAnalyzerWebClient() {
         HttpClient http = HttpClient.create()
-                .responseTimeout(Duration.ofMinutes(5)); // 필요에 맞게 늘림
+                .responseTimeout(Duration.ofMinutes(5));
 
         return WebClient.builder()
                 .baseUrl("http://127.0.0.1:8081")
                 .clientConnector(new ReactorClientHttpConnector(http))
-                .codecs(config -> config.defaultCodecs().maxInMemorySize(10 * 1024 * 1024)) // 10MB
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
                 .build();
     }
-
 
     @Bean(name = "chatbotWebClient")
     public WebClient chatbotWebClient() {
@@ -48,13 +53,13 @@ public class WebClientConfig {
                 });
 
         String base = props.getBaseUrl();
-        log.info("[CHATBOT] Using baseUrl={}", props.getBaseUrl());
+        log.info("[CHATBOT] Using baseUrl={}", base);
         if (base == null || !(base.startsWith("http://") || base.startsWith("https://"))) {
             throw new IllegalArgumentException("chatbot.python.base-url must start with http:// or https:// : " + base);
         }
 
         return WebClient.builder()
-                .baseUrl(base)   // ✅ props에서 읽어오기
+                .baseUrl(base)
                 .clientConnector(new ReactorClientHttpConnector(http))
                 .defaultHeaders(h -> h.setContentType(MediaType.APPLICATION_JSON))
                 .exchangeStrategies(ExchangeStrategies.builder()
@@ -63,5 +68,22 @@ public class WebClientConfig {
                 .build();
     }
 
+    @Bean(name = "workbookWebClient")
+    public WebClient workbookWebClient() {
+        String base = workbookProps.getBaseUrl();
+        log.info("[WORKBOOK] Using baseUrl={}", base);
+        if (base == null || !(base.startsWith("http://") || base.startsWith("https://"))) {
+            throw new IllegalArgumentException("workbook.python.base-url must start with http:// or https:// : " + base);
+        }
 
+        HttpClient http = HttpClient.create()
+                .responseTimeout(Duration.ofMillis(workbookProps.getReadTimeoutMs()));
+
+        return WebClient.builder()
+                .baseUrl(base)
+                .clientConnector(new ReactorClientHttpConnector(http))
+                .defaultHeaders(h -> h.setContentType(MediaType.APPLICATION_JSON))
+                .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                .build();
+    }
 }

@@ -55,6 +55,11 @@ chatbot:
     read-timeout-ms: 600000   # 10분
 
 
+workbook:
+  python:
+    base-url: http://127.0.0.1:8083
+    read-timeout-ms: 120000
+
 
 
 

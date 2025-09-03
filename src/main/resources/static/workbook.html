@@ -1,0 +1,175 @@
+<!-- src/main/resources/templates/workbook.html -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>워크북 테스트 페이지</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root { --gap: 12px; }
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, Helvetica, sans-serif; margin: 24px; }
+        .row { display: flex; gap: var(--gap); margin-bottom: var(--gap); flex-wrap: wrap; align-items: center; }
+        label { min-width: 90px; }
+        input, button { padding: 8px 10px; font-size: 14px; }
+        input { border: 1px solid #ccc; border-radius: 8px; min-width: 220px; }
+        button { border: 1px solid #ddd; border-radius: 10px; background: #f7f7f7; cursor: pointer; }
+        button:hover { background: #eee; }
+        .btn-row button { padding: 10px 14px; }
+        .badge { background:#eef; color:#225; padding:4px 8px; border-radius:999px; font-size:12px; }
+        .badge.err { background:#fee; color:#522; }
+        .grid { display:grid; gap:14px; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); margin-top: 12px; }
+        .card { border:1px solid #e5e5e5; border-radius:14px; padding:16px; background:#fff; box-shadow: 0 2px 8px rgba(0,0,0,.03); }
+        .card h3 { margin: 0 0 8px 0; font-size: 18px; }
+        .muted { color:#666; font-size: 13px; }
+        pre { white-space: pre-wrap; background:#0f172a; color:#e5e7eb; padding:12px; border-radius:10px; font-size: 12.5px; }
+        ul { margin: 6px 0 0 18px; padding: 0; }
+        .divider { height:1px; background:#eee; margin: 18px 0; }
+    </style>
+</head>
+<body>
+<h1>워크북 내용 불러오기</h1>
+
+<div class="row">
+    <label for="topic">주제</label>
+    <input id="topic" value="나를 아는 부모" />
+</div>
+<div class="row">
+    <label for="userId">userId</label>
+    <input id="userId" value="u001" />
+    <span class="muted">비워두면 자동으로 u001이 적용됩니다.</span>
+</div>
+
+<div class="row btn-row">
+    <button id="loadBtn">내용 불러오기</button>
+    <button id="loadAndSaveBtn">저장하며 불러오기</button>
+    <button id="clearBtn">지우기</button>
+    <span id="status" class="badge"></span>
+</div>
+
+<div class="divider"></div>
+
+<h2>결과(JSON 원본)</h2>
+<pre id="jsonBox">여기에 응답 JSON이 표시됩니다…</pre>
+
+<h2>미리보기</h2>
+<div id="cards" class="grid"></div>
+
+<script>
+    const $ = (s)=>document.querySelector(s);
+    const topicEl = $("#topic");
+    const userIdEl = $("#userId");
+    const statusEl = $("#status");
+    const jsonBox = $("#jsonBox");
+    const cards = $("#cards");
+
+    $("#loadBtn").addEventListener("click", () => loadWorkbook(false));
+    $("#loadAndSaveBtn").addEventListener("click", () => loadWorkbook(true));
+    $("#clearBtn").addEventListener("click", clearAll);
+
+    function clearAll() {
+        statusEl.textContent = "";
+        statusEl.className = "badge";
+        jsonBox.textContent = "여기에 응답 JSON이 표시됩니다…";
+        cards.innerHTML = "";
+    }
+
+    async function loadWorkbook(save) {
+        const topic = (topicEl.value || "").trim();
+        const userId = (userIdEl.value || "").trim(); // 비워두면 서버에서 u001로 채움
+
+        if (!topic) {
+            setStatus("주제를 입력해 주세요.", true);
+            return;
+        }
+
+        setStatus("요청 중…", false);
+        cards.innerHTML = "";
+
+        const payload = { topic };
+        if (userId) payload.userId = userId;
+
+        try {
+            const res = await fetch(`/api/workbook/simulate?save=${save}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+
+            // JSON 원본 표시
+            jsonBox.textContent = JSON.stringify(data, null, 2);
+
+            // 카드 렌더링
+            renderCards(data);
+            setStatus(save ? "불러오기 + 저장 완료 ✅" : "불러오기 완료 ✅", false);
+        } catch (err) {
+            setStatus(`실패 ❌ ${err.message || err}`, true);
+            jsonBox.textContent = String(err);
+        }
+    }
+
+    function renderCards(data) {
+        const list = Array.isArray(data?.activities) ? data.activities : [];
+        if (!list.length) {
+            cards.innerHTML = `<div class="muted">표시할 활동이 없습니다.</div>`;
+            return;
+        }
+        list.forEach((block, idx) => {
+            const title = block?.activity_title || `Activity ${idx+1}`;
+            const items = Array.isArray(block?.activities) ? block.activities : [];
+            const card = document.createElement("div");
+            card.className = "card";
+            card.innerHTML = `
+      <h3>${escapeHtml(title)}</h3>
+      ${items.map((it, i) => renderItem(it, i)).join("")}
+    `;
+            cards.appendChild(card);
+        });
+    }
+
+    function renderItem(it, i) {
+        const type = it?.type || "";
+        const instruction = it?.instruction || "";
+        const base = `<p><b>${i+1}. [${escapeHtml(type)}]</b> ${escapeHtml(instruction)}</p>`;
+
+        if (type === "작성형") {
+            const ex = it?.example_answer || "-";
+            return base + `<p class="muted"><i>예시 답변:</i> ${escapeHtml(ex)}</p>`;
+        }
+        if (type === "선택형") {
+            const opts = Array.isArray(it?.options) ? it.options : [];
+            const li = opts.map((o,k)=>`<li>${k+1}) ${escapeHtml(o)}</li>`).join("");
+            const best = it?.optimal_option || "-";
+            return base + `<ul>${li}</ul><p><b>★ 추천:</b> ${escapeHtml(best)}</p>`;
+        }
+        if (type === "시뮬레이션") {
+            const sit = it?.situation || "-";
+            const ai = it?.ai_optimal_response || "";
+            return base + `<p><b>상황:</b> ${escapeHtml(sit)}</p><pre>${escapeHtml(ai)}</pre>`;
+        }
+        // 기타 타입
+        return base;
+    }
+
+    function setStatus(msg, isErr) {
+        statusEl.textContent = msg;
+        statusEl.className = "badge" + (isErr ? " err" : "");
+    }
+
+    // 간단 XSS 방지용
+    function escapeHtml(s) {
+        return String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+    }
+
+    // Enter로 즉시 불러오기
+    topicEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ $("#loadBtn").click(); }});
+    userIdEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ $("#loadBtn").click(); }});
+</script>
+</body>
+</html>
