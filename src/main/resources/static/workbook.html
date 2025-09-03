@@ -3,7 +3,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8" />
-    <title>워크북 테스트 페이지</title>
+    <title>워크북 테스트</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style>
         :root { --gap: 12px; }
@@ -11,10 +11,9 @@
         .row { display: flex; gap: var(--gap); margin-bottom: var(--gap); flex-wrap: wrap; align-items: center; }
         label { min-width: 90px; }
         input, button { padding: 8px 10px; font-size: 14px; }
-        input { border: 1px solid #ccc; border-radius: 8px; min-width: 220px; }
+        input { border: 1px solid #ccc; border-radius: 8px; min-width: 260px; }
         button { border: 1px solid #ddd; border-radius: 10px; background: #f7f7f7; cursor: pointer; }
         button:hover { background: #eee; }
-        .btn-row button { padding: 10px 14px; }
         .badge { background:#eef; color:#225; padding:4px 8px; border-radius:999px; font-size:12px; }
         .badge.err { background:#fee; color:#522; }
         .grid { display:grid; gap:14px; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); margin-top: 12px; }
@@ -32,24 +31,12 @@
 <div class="row">
     <label for="topic">주제</label>
     <input id="topic" value="나를 아는 부모" />
-</div>
-<div class="row">
-    <label for="userId">userId</label>
-    <input id="userId" value="u001" />
-    <span class="muted">비워두면 자동으로 u001이 적용됩니다.</span>
-</div>
-
-<div class="row btn-row">
     <button id="loadBtn">내용 불러오기</button>
-    <button id="loadAndSaveBtn">저장하며 불러오기</button>
     <button id="clearBtn">지우기</button>
     <span id="status" class="badge"></span>
 </div>
 
 <div class="divider"></div>
-
-<h2>결과(JSON 원본)</h2>
-<pre id="jsonBox">여기에 응답 JSON이 표시됩니다…</pre>
 
 <h2>미리보기</h2>
 <div id="cards" class="grid"></div>
@@ -57,26 +44,23 @@
 <script>
     const $ = (s)=>document.querySelector(s);
     const topicEl = $("#topic");
-    const userIdEl = $("#userId");
     const statusEl = $("#status");
-    const jsonBox = $("#jsonBox");
     const cards = $("#cards");
 
-    $("#loadBtn").addEventListener("click", () => loadWorkbook(false));
-    $("#loadAndSaveBtn").addEventListener("click", () => loadWorkbook(true));
+    $("#loadBtn").addEventListener("click", loadWorkbook);
     $("#clearBtn").addEventListener("click", clearAll);
+
+    // Enter로 즉시 불러오기
+    topicEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ loadWorkbook(); }});
 
     function clearAll() {
         statusEl.textContent = "";
         statusEl.className = "badge";
-        jsonBox.textContent = "여기에 응답 JSON이 표시됩니다…";
         cards.innerHTML = "";
     }
 
-    async function loadWorkbook(save) {
+    async function loadWorkbook() {
         const topic = (topicEl.value || "").trim();
-        const userId = (userIdEl.value || "").trim(); // 비워두면 서버에서 u001로 채움
-
         if (!topic) {
             setStatus("주제를 입력해 주세요.", true);
             return;
@@ -85,11 +69,10 @@
         setStatus("요청 중…", false);
         cards.innerHTML = "";
 
-        const payload = { topic };
-        if (userId) payload.userId = userId;
+        const payload = { topic }; // user는 서버에서 CSV(u001)로 자동 주입
 
         try {
-            const res = await fetch(`/api/workbook/simulate?save=${save}`, {
+            const res = await fetch(`/api/workbook/simulate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
@@ -97,15 +80,10 @@
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
 
-            // JSON 원본 표시
-            jsonBox.textContent = JSON.stringify(data, null, 2);
-
-            // 카드 렌더링
             renderCards(data);
-            setStatus(save ? "불러오기 + 저장 완료 ✅" : "불러오기 완료 ✅", false);
+            setStatus("완료 ✅", false);
         } catch (err) {
             setStatus(`실패 ❌ ${err.message || err}`, true);
-            jsonBox.textContent = String(err);
         }
     }
 
@@ -148,7 +126,6 @@
             const ai = it?.ai_optimal_response || "";
             return base + `<p><b>상황:</b> ${escapeHtml(sit)}</p><pre>${escapeHtml(ai)}</pre>`;
         }
-        // 기타 타입
         return base;
     }
 
@@ -166,10 +143,6 @@
             .replaceAll('"', "&quot;")
             .replaceAll("'", "&#039;");
     }
-
-    // Enter로 즉시 불러오기
-    topicEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ $("#loadBtn").click(); }});
-    userIdEl.addEventListener("keydown", (e)=>{ if(e.key==="Enter"){ $("#loadBtn").click(); }});
 </script>
 </body>
 </html>
