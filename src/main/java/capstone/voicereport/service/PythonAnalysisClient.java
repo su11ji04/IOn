@@ -1,4 +1,3 @@
-// capstone/voicereport/service/PythonAnalysisClient.java
 package capstone.voicereport.service;
 
 import capstone.voicereport.dto.AnalysisReportDto;
@@ -27,7 +26,7 @@ public class PythonAnalysisClient {
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
 
-    // ✅ 생성자에 @Qualifier로 주입
+    // WEB CLIENT BEAN 생성
     public PythonAnalysisClient(
             @Qualifier("pythonAnalyzerWebClient") WebClient webClient,
             ObjectMapper objectMapper
@@ -36,40 +35,57 @@ public class PythonAnalysisClient {
         this.objectMapper = objectMapper;
     }
 
+    // PYTHON API 호출(오디오, 오디오 파일 이름, USER ID, USER 정보)
     public AnalysisReportDto analyze(
             byte[] audioBytes,
             String filename,
-            String userIdOrNull,
+            String userId,
             Map<String, Object> userProfileMap
     ) {
         MultipartBodyBuilder body = new MultipartBodyBuilder();
 
-        String safeName = (filename != null && !filename.isBlank()) ? filename : "audio.wav";
+        // AUDIO
+        if (audioBytes == null || audioBytes.length == 0) {
+            throw new IllegalArgumentException("Audio file must not be empty");
+        }
+        // AUDIO FILE NAME
+        if (filename == null || filename.isBlank()) {
+            throw new IllegalArgumentException("Filename must not be null or blank");
+        }
+        String safeName = filename.trim();
+        //AUDIO SETTING
         body.part("audio", new ByteArrayResource(audioBytes) {
                     @Override public String getFilename() { return safeName; }
                 })
                 .filename(safeName)
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE);
 
-        if (userIdOrNull != null && !userIdOrNull.isBlank()) {
-            body.part("user_id", userIdOrNull)
-                    .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
-        }
 
+
+        // USER ID
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("User ID must not be null or blank");
+        }
+        // USER SETTING
+        body.part("user_id", userId)
+                .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
         if (userProfileMap != null && !userProfileMap.isEmpty()) {
             try {
                 String json = objectMapper.writeValueAsString(userProfileMap);
-                log.info("[PY-SEND] user_profile_json length(bytes UTF-8)={}", json.getBytes(StandardCharsets.UTF_8).length);
-                log.info("[PY-SEND] user_profile_json preview={}", json.substring(0, Math.min(200, json.length())));
+                log.info("[USER SETTING] user_profile_json length(bytes UTF-8)={}", json.getBytes(StandardCharsets.UTF_8).length);
+                log.info("[USER SETTING] user_profile_json preview={}", json.substring(0, Math.min(200, json.length())));
                 body.part("user_profile_json", json)
-                        .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
             } catch (Exception e) {
                 log.warn("Failed to serialize userProfileMap: {}", e.toString());
             }
         } else {
-            log.warn("[PY-SEND] user_profile_map is empty -> NOT sending user_profile_json");
+            log.warn("[USER SETTING] user_profile_map is empty -> NOT sending user_profile_json");
         }
 
+
+
+        //PYTHON 실행
         try {
             String bodyStr = webClient.post()
                     .uri("/analyze")
@@ -79,10 +95,9 @@ public class PythonAnalysisClient {
                     .exchangeToMono(res -> res.bodyToMono(String.class)
                             .defaultIfEmpty("")
                             .map(s -> {
-                                HttpStatusCode code = res.statusCode(); // ✅ 타입 교정
-                                log.info("[STEP4][PY-RECV] status={}, body.len={}, preview={}",
-                                        code.value(), s.length(),
-                                        s.substring(0, Math.min(200, s.length())));
+                                HttpStatusCode code = res.statusCode();
+                                log.info("[PYTHON CODE] status={}, body.len={}",
+                                        code.value(), s.length());
                                 if (!code.is2xxSuccessful()) {
                                     throw new RuntimeException("Python HTTP " + code.value() + " body: " + s);
                                 }
@@ -90,20 +105,21 @@ public class PythonAnalysisClient {
                             })
                     )
                     .timeout(REQUEST_TIMEOUT)
-                    .doOnError(err -> log.error("[STEP4][PY-ERR] {}", err.toString(), err))
+                    .doOnError(err -> log.error("[PYTHON CODE] {}", err.toString(), err))
                     .block();
 
+            // PYTHON RETURN BODY = NULL or BLANK
             if (bodyStr == null || bodyStr.isBlank()) {
-                log.warn("[STEP4][PY-RECV] empty body from Python");
+                log.warn("[PYTHON CODE] empty body from Python");
                 return null;
             }
 
             AnalysisReportDto ar = objectMapper.readValue(bodyStr, AnalysisReportDto.class);
 
             if (ar != null) {
-                log.info("[STEP4][SVC] Python 응답 매핑 OK: subTitle={}, lenSeconds={}, summary?={}, freq?={}, expr?={}, timelineLen={}",
+                // PYTHON RETURN BODY 파싱 성공
+                log.info("[PYTHON CODE] 응답 매핑 OK: subTitle={}, summary?={}, freq?={}, expr?={}, timelineLen={}",
                         ar.getSubTitle(),
-                        ar.getLength(),
                         ar.getConversationSummary() != null,
                         ar.getFrequency() != null,
                         ar.getExpression() != null,
@@ -111,12 +127,13 @@ public class PythonAnalysisClient {
                                 ? ar.getEmotion().getTimeline().size() : 0
                 );
             } else {
-                log.warn("[STEP4][SVC] parsed AnalysisReportDto is null");
+                // PYTHON RETURN BODY 파싱 결과 NULL
+                log.warn("[PYTHON CODE] parsed AnalysisReportDto is null");
             }
             return ar;
 
         } catch (Exception e) {
-            log.error("[STEP4][PY->SVC] parse or call failed: {}", e.toString(), e);
+            log.error("[PYTHON CODE] parse or call failed: {}", e.toString(), e);
             return null;
         }
     }

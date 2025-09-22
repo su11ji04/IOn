@@ -1,4 +1,4 @@
-package capstone.voicereport.dto;
+package capstone.voicereport.service;
 
 import lombok.*;
 import java.util.List;
@@ -9,28 +9,20 @@ public class VoiceReportResponse {
     private Long id;
     private String subTitle;
     private String day;
+
     private String conversationSummary;
-    private Integer length; // seconds
     private String overallFeedback;
 
-    private Frequency frequency;
     private Expression expression;
-
-    private Emotion emotion;
-
-    private String kidAttitude;
-
     private List<ChangeProposal> changeProposal;
 
-    private String pattern;
+    private Emotion emotion;
+    private String kidAttitude;
+
+    private Frequency frequency;
     private String strength;
 
-    @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-    public static class Frequency {
-        private Integer parentFrequency;
-        private Integer kidFrequency;
-        private String frequencyFeedback;
-    }
+
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
     public static class Expression {
@@ -39,6 +31,12 @@ public class VoiceReportResponse {
         private String parentConditions;
         private String kidConditions;
         private String expressionFeedback;
+    }
+
+    @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+    public static class ChangeProposal {
+        private String existingExpression;
+        private String proposalExpression;
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -54,8 +52,9 @@ public class VoiceReportResponse {
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-    public static class ChangeProposal {
-        private String existingExpression;
-        private String proposalExpression;
+    public static class Frequency {
+        private Integer parentFrequency;
+        private Integer kidFrequency;
+        private String frequencyFeedback;
     }
 }

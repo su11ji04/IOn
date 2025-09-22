@@ -7,10 +7,11 @@ import lombok.*;
 @Embeddable
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class EmotionPoint {
-
-    @Column(name = "time", length = 30) // DDL 컬럼명: time
+    // 시간
+    @Column(name = "emotion_time_label", length = 30)
     private String time;
 
+    // 감정
     @Column(name = "moment_emotion", length = 100)
     private String momentEmotion;
 }

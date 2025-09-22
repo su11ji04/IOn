@@ -1,19 +1,19 @@
-# voicereport/diarization.py
 from typing import List, Dict, Optional
 import os
 import logging
+import os.path as _p
 
 log = logging.getLogger("uvicorn.error")
 
+HF_TOKEN_ENV = "HUGGINGFACE_TOKEN"
+HF_TOKEN_FILENAME = "huggingface_token.txt"
+NUM_SPEAKERS_ENV = "NUM_SPEAKERS"
 
+
+# HUGGINGFACE TOKEN LOAD
 def _load_hf_token_from_file(default_path: Optional[str] = None) -> Optional[str]:
-    """
-    1순위: 환경변수 HUGGINGFACE_TOKEN
-    2순위: voicereport/keys/Huggingface_token.txt
-    3순위: 프로젝트 루트(keys/Huggingface_token.txt)
-    """
     # 1) ENV
-    env = os.getenv("HUGGINGFACE_TOKEN")
+    env = os.getenv(HF_TOKEN_ENV)
     if env:
         tok = env.strip()
         if tok:
@@ -25,9 +25,9 @@ def _load_hf_token_from_file(default_path: Optional[str] = None) -> Optional[str
 
     # 2) 패키지 경로
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        path_pkg = default_path or os.path.join(base_dir, "keys", "Huggingface_token.txt")
-        if os.path.exists(path_pkg):
+        base_dir = _p.dirname(_p.abspath(__file__))
+        path_pkg = default_path or _p.join(base_dir, "keys", HF_TOKEN_FILENAME)
+        if _p.exists(path_pkg):
             with open(path_pkg, "r", encoding="utf-8") as f:
                 tok = f.read().strip()
             if tok:
@@ -44,9 +44,9 @@ def _load_hf_token_from_file(default_path: Optional[str] = None) -> Optional[str
 
     # 3) 프로젝트 루트 경로
     try:
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path_root = os.path.join(project_root, "keys", "Huggingface_token.txt")
-        if os.path.exists(path_root):
+        project_root = _p.dirname(_p.dirname(_p.abspath(__file__)))
+        path_root = _p.join(project_root, "keys", HF_TOKEN_FILENAME)
+        if _p.exists(path_root):
             with open(path_root, "r", encoding="utf-8") as f:
                 tok = f.read().strip()
             if tok:
@@ -69,24 +69,28 @@ def _load_hf_token_from_file(default_path: Optional[str] = None) -> Optional[str
     return None
 
 
+# PipeLine Load
 def _load_pipeline(token: str):
-    """pyannote Pipeline 로드(3.1 우선) + 호출 가능성 가드 + 폴백."""
     from pyannote.audio import Pipeline
 
     last_err = None
     model_ids = [
-        "pyannote/speaker-diarization-3.1",  # 권장
-        "pyannote/speaker-diarization",      # 폴백
+        "pyannote/speaker-diarization-3.1",
+        "pyannote/speaker-diarization",
     ]
+
     for mid in model_ids:
         try:
             log.info("[DIAR] loading model: %s", mid)
-            pl = Pipeline.from_pretrained(mid, use_auth_token=token)
+            try:
+                pl = Pipeline.from_pretrained(mid, use_auth_token=token)
+            except TypeError:
+                pl = Pipeline.from_pretrained(mid, token=token)
+
             if callable(pl):
                 log.info("[DIAR] model loaded ok: %s", mid)
                 return pl
-            else:
-                log.error("[DIAR] non-callable pipeline for %s: %r", mid, type(pl))
+            log.error("[DIAR] non-callable pipeline for %s: %r", mid, type(pl))
         except Exception as e:
             last_err = e
             log.error("[DIAR] load failed for %s: %s", mid, e, exc_info=True)
@@ -94,44 +98,66 @@ def _load_pipeline(token: str):
     raise RuntimeError(f"Failed to load pyannote pipeline. Last error: {last_err}")
 
 
+# 화자 분리
 def run_diarization(audio_path: str) -> List[Dict]:
-    """
-    Returns: [{"start": float, "end": float, "speaker": "SPEAKER_00"}, ...]
-    """
-    # 무거운 의존성은 함수 내부 임포트 (모듈 임포트 시 실패 방지)
+    # AUDIO FILE ERROR CHECK
+    if not _p.exists(audio_path):
+        raise FileNotFoundError(f"Audio file not found: {audio_path}")
+    if not _p.isfile(audio_path):
+        raise RuntimeError(f"Audio path is not a file: {audio_path}")
+
     token = _load_hf_token_from_file()
     if not token:
-        raise RuntimeError("HuggingFace token not found. Set HUGGINGFACE_TOKEN or provide keys/Huggingface_token.txt")
+        raise RuntimeError(
+            f"HuggingFace token not found. Set {HF_TOKEN_ENV} or provide keys/{HF_TOKEN_FILENAME}"
+        )
 
-    pipeline = _load_pipeline(token)
-
-    # 스피커 수 고정 옵션 (없으면 자동 추정)
-    num_speakers_env = os.getenv("NUM_SPEAKERS")
+    # Pipeline Load
     try:
-        if num_speakers_env and num_speakers_env.isdigit():
-            diar = pipeline(audio_path, num_speakers=int(num_speakers_env))
+        pipeline = _load_pipeline(token)
+    except Exception as e:
+        log.error("[DIAR] pipeline load failed: %s", e, exc_info=True)
+        raise
+    num_speakers_env = os.getenv(NUM_SPEAKERS_ENV)
+    try:
+        num_speakers: Optional[int] = None
+        if num_speakers_env:
+            try:
+                num_speakers = int(num_speakers_env.strip())
+                if num_speakers <= 0:
+                    num_speakers = None
+            except ValueError:
+                num_speakers = None
+
+        if num_speakers is not None:
+            diar = pipeline(audio_path, num_speakers=num_speakers)
         else:
             diar = pipeline(audio_path)
     except Exception as e:
-        log.error("[DIAR] pipeline call failed: %s", e, exc_info=True)
+        log.error(
+            "[DIAR] pipeline inference failed: %s (audio=%s, num_speakers_env=%r)",
+            e, audio_path, num_speakers_env, exc_info=True
+        )
         raise
 
     results: List[Dict] = []
 
-    # 버전에 따라 메서드가 달라서 순차 폴백
+    # FALLBACK
     if hasattr(diar, "itertracks"):
         for segment, _, label in diar.itertracks(yield_label=True):
+            lab = (str(label).strip() if label is not None else "") or "UNKNOWN"
             results.append({
                 "start": float(segment.start),
                 "end": float(segment.end),
-                "speaker": str(label)
+                "speaker": lab,
             })
     elif hasattr(diar, "iter_segments"):
         for segment, label in diar.iter_segments(label=True):
+            lab = (str(label).strip() if label is not None else "") or "UNKNOWN"
             results.append({
                 "start": float(segment.start),
                 "end": float(segment.end),
-                "speaker": str(label)
+                "speaker": lab,
             })
     else:
         timeline = getattr(diar, "get_timeline", lambda: [])()
@@ -139,19 +165,25 @@ def run_diarization(audio_path: str) -> List[Dict]:
             results.append({
                 "start": float(getattr(seg, "start", 0.0)),
                 "end": float(getattr(seg, "end", 0.0)),
-                "speaker": "UNKNOWN"
+                "speaker": "UNKNOWN",
             })
 
-    # 스피커명 정규화
+    # 이상치 보정
+    for r in results:
+        if r["end"] < r["start"]:
+            r["start"], r["end"] = r["end"], r["start"]
+
+    # SPEAKER 라벨 정규화
     speaker_map: Dict[str, str] = {}
     next_id = 0
     for r in results:
-        spk = r["speaker"]
+        spk = r.get("speaker") or "UNKNOWN"
         if spk not in speaker_map:
             speaker_map[spk] = f"SPEAKER_{next_id:02d}"
             next_id += 1
         r["speaker"] = speaker_map[spk]
 
+    # 정렬
     results.sort(key=lambda x: (x.get("start", 0.0), x.get("end", 0.0)))
     return results
 

@@ -7,34 +7,32 @@ import java.util.List;
 public class AnalysisReportDto {
     private String subTitle;
     private String day;
+
     private String conversationSummary;
-    private Integer length;
     private String overallFeedback;
 
-    private Frequency frequency;
     private Expression expression;
-    private Emotion emotion;
-
-    private String kidAttitude;
     private List<ChangeProposal> changeProposal;
 
-    private String pattern;
-    private String strength;
+    private Emotion emotion;
+    private String kidAttitude;
+    private Frequency frequency;
 
-    @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-    public static class Frequency {
-        private Integer parentFrequency;
-        private Integer kidFrequency;
-        private String frequencyFeedback;
-    }
+    private String strength;
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
     public static class Expression {
         private String parentExpression;
-        private String kidExpression;
         private String parentConditions;
+        private String kidExpression;
         private String kidConditions;
         private String expressionFeedback;
+    }
+
+    @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+    public static class ChangeProposal {
+        private String existingExpression;
+        private String proposalExpression;
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
@@ -50,8 +48,10 @@ public class AnalysisReportDto {
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-    public static class ChangeProposal {
-        private String existingExpression;
-        private String proposalExpression;
+    public static class Frequency {
+        private Integer parentFrequency;
+        private Integer kidFrequency;
+        private String frequencyFeedback;
     }
+
 }

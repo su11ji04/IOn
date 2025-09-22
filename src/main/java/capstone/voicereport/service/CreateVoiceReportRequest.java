@@ -1,6 +1,5 @@
-package capstone.voicereport.dto;
+package capstone.voicereport.service;
 
-import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
