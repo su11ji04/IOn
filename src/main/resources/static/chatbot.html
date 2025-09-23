@@ -1,61 +1,193 @@
-<!-- src/main/resources/static/chatbot.html -->
 <!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Chatbot Test</title>
     <style>
-        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-        .card { max-width: 760px; margin: 0 auto; padding: 16px; border: 1px solid #ddd; border-radius: 12px; }
-        textarea { width: 100%; min-height: 120px; }
-        input, button, textarea { font-size: 16px; padding: 8px; }
-        #answer { white-space: pre-wrap; background:#fafafa; padding:12px; border-radius:8px; border:1px solid #eee; }
-        .row { display: grid; grid-template-columns: 1fr; gap: 8px; align-items: center; }
-        .row + .row { margin-top: 8px; }
+        body { font-family: Arial, sans-serif; margin: 16px; }
+        textarea { width: 100%; min-height: 100px; }
+        input, button, select, textarea { font-size: 14px; padding: 6px; }
+        .box { border: 1px solid #ddd; padding: 12px; margin-bottom: 16px; }
+        .row { display: flex; gap: 8px; align-items: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        .small { color: #666; font-size: 12px; }
+        .err { color: #b00020; white-space: pre-wrap; }
+        .ok { color: #0a7d14; }
     </style>
 </head>
 <body>
-<div class="card">
-    <h2>챗봇 질의 (테스트: userId 고정 = u001)</h2>
+<h1>Chatbot Test</h1>
 
+<!-- 질문 전송 -->
+<div class="box">
+    <h3>질문 보내기 (POST /api/chat/ask)</h3>
+    <div id="askErr" class="err"></div>
+    <div id="askOk" class="ok"></div>
+    <textarea id="question" placeholder="질문을 입력하세요"></textarea>
+    <div class="row" style="margin-top:8px;">
+        <button id="btnAsk">전송</button>
+        <button id="btnClear" type="button">지우기</button>
+    </div>
+    <div class="small" style="margin-top:6px;">응답(저장된 내용 일부):</div>
+    <pre id="answerPreview" style="white-space:pre-wrap;"></pre>
+</div>
+
+<!-- 목록 -->
+<div class="box">
+    <h3>히스토리 (GET /api/chat/list)</h3>
     <div class="row">
-        <label for="question">질문</label>
-        <textarea id="question" placeholder="아이가 친구랑 자주 다투어요. 어떻게 사회성을 길러줄 수 있을까요?"></textarea>
+        <label>페이지 크기
+            <select id="pageSize">
+                <option>5</option>
+                <option selected>10</option>
+                <option>20</option>
+            </select>
+        </label>
+        <button id="btnReload">새로고침</button>
+        <span id="pageInfo" class="small"></span>
+        <button id="prevBtn">이전</button>
+        <button id="nextBtn">다음</button>
     </div>
+    <div id="listErr" class="err" style="margin-top:6px;"></div>
+    <table>
+        <thead>
+        <tr><th>ID</th><th>질문</th><th>답변</th><th>생성시각</th><th>상세</th></tr>
+        </thead>
+        <tbody id="listBody">
+        <tr><td colspan="5" class="small">데이터가 없습니다.</td></tr>
+        </tbody>
+    </table>
+</div>
 
-    <div style="margin-top:12px">
-        <button id="send">질문 보내기</button>
-    </div>
-
-    <h3>응답</h3>
-    <div id="answer">(여기에 답변이 표시됩니다)</div>
+<!-- 상세 -->
+<div class="box" id="detailBox" style="display:none;">
+    <h3>상세 (GET /api/chat/{id})</h3>
+    <div id="detailErr" class="err"></div>
+    <div class="small">ID: <span id="d_id"></span></div>
+    <div class="small">생성시각: <span id="d_createdAt"></span></div>
+    <div style="margin-top:6px;">질문</div>
+    <pre id="d_question" style="white-space:pre-wrap;"></pre>
+    <div>답변</div>
+    <pre id="d_answer" style="white-space:pre-wrap;"></pre>
+    <div class="row"><button id="btnCloseDetail" type="button">닫기</button></div>
 </div>
 
 <script>
     const $ = (s) => document.querySelector(s);
-    $('#send').addEventListener('click', async () => {
-        const question = $('#question').value.trim();
-        if (!question) { alert('질문을 입력하세요'); return; }
 
-        $('#answer').textContent = '요청 중...';
-        try {
-            const resp = await fetch('/api/chatbot/ask', {
+    const api = {
+        ask: async (question) => {
+            const res = await fetch('/api/chat/ask', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                // ✅ userId 제거: 질문만 보냄
+                headers: {'Content-Type':'application/json'},
                 body: JSON.stringify({ question })
             });
-            if (!resp.ok) {
-                const text = await resp.text();
-                throw new Error(`[${resp.status}] ${text}`);
-            }
-            const data = await resp.json();
-            $('#answer').textContent = data.answer || JSON.stringify(data, null, 2);
-        } catch (e) {
-            $('#answer').textContent = '오류: ' + e.message;
+            if (!res.ok) throw await mkErr(res);
+            return res.json();
+        },
+        list: async (page, size) => {
+            const res = await fetch(`/api/chat/list?page=${page}&size=${size}`);
+            if (!res.ok) throw await mkErr(res);
+            return res.json();
+        },
+        get: async (id) => {
+            const res = await fetch(`/api/chat/${encodeURIComponent(id)}`);
+            if (!res.ok) throw await mkErr(res);
+            return res.json();
         }
-    });
+    };
+
+    async function mkErr(res){
+        let body;
+        try { body = await res.json(); } catch { body = await res.text(); }
+        const e = new Error(`[${res.status}] ${res.statusText}`);
+        e.detail = body;
+        return e;
+    }
+
+    // state
+    let page = 0, totalPages = 0;
+
+    // events
+    $('#btnAsk').addEventListener('click', doAsk);
+    $('#btnClear').addEventListener('click', () => { $('#question').value=''; $('#askErr').textContent=''; $('#askOk').textContent=''; $('#answerPreview').textContent=''; });
+    $('#btnReload').addEventListener('click', () => { page = 0; loadList(); });
+    $('#prevBtn').addEventListener('click', () => { if (page > 0) { page--; loadList(); }});
+    $('#nextBtn').addEventListener('click', () => { if (page+1 < totalPages) { page++; loadList(); }});
+    $('#pageSize').addEventListener('change', () => { page = 0; loadList(); });
+    $('#btnCloseDetail').addEventListener('click', () => { $('#detailBox').style.display='none'; });
+
+    async function doAsk(){
+        $('#askErr').textContent=''; $('#askOk').textContent='';
+        const q = $('#question').value.trim();
+        if (!q){ $('#askErr').textContent = '질문을 입력하세요.'; return; }
+        try{
+            const saved = await api.ask(q);
+            $('#askOk').textContent = '저장 완료';
+            $('#answerPreview').textContent = saved.answer || '';
+            page = 0;
+            await loadList();
+        }catch(e){
+            $('#askErr').textContent = e.message + '\n' + (typeof e.detail==='object' ? JSON.stringify(e.detail) : e.detail);
+        }
+    }
+
+    async function loadList(){
+        $('#listErr').textContent='';
+        $('#listBody').innerHTML = `<tr><td colspan="5" class="small">불러오는 중…</td></tr>`;
+        try{
+            const size = Number($('#pageSize').value);
+            const p = await api.list(page, size);
+            totalPages = p.totalPages ?? 0;
+            $('#pageInfo').textContent = `페이지 ${ (p.number ?? page)+1 } / ${ totalPages || 1 }`;
+
+            if (!p.content || p.content.length === 0){
+                $('#listBody').innerHTML = `<tr><td colspan="5" class="small">데이터가 없습니다.</td></tr>`;
+                return;
+            }
+
+            const rows = p.content.map(r => `
+        <tr>
+          <td>${esc(r.id)}</td>
+          <td>${esc(r.question ?? '')}</td>
+          <td>${esc((r.answer ?? '').slice(0,80))}</td>
+          <td>${fmt(r.createdAt)}</td>
+          <td><button onclick="openDetail('${r.id}')">열기</button></td>
+        </tr>
+      `).join('');
+            $('#listBody').innerHTML = rows;
+        }catch(e){
+            $('#listErr').textContent = e.message + '\n' + (typeof e.detail==='object' ? JSON.stringify(e.detail) : e.detail);
+            $('#listBody').innerHTML = `<tr><td colspan="5" class="small">로드 실패</td></tr>`;
+        }
+    }
+
+    async function openDetail(id){
+        $('#detailErr').textContent='';
+        $('#detailBox').style.display='block';
+        $('#d_id').textContent = id;
+        $('#d_createdAt').textContent = '-';
+        $('#d_question').textContent = '불러오는 중…';
+        $('#d_answer').textContent = '';
+
+        try{
+            const d = await api.get(id);
+            $('#d_createdAt').textContent = fmt(d.createdAt);
+            $('#d_question').textContent = d.question || '';
+            $('#d_answer').textContent = d.answer || '';
+        }catch(e){
+            $('#detailErr').textContent = e.message + '\n' + (typeof e.detail==='object' ? JSON.stringify(e.detail) : e.detail);
+        }
+    }
+
+    function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function fmt(s){ try{ return s ? new Date(s).toLocaleString() : ''; }catch{ return s || ''; } }
+
+    // init
+    loadList();
+    window.openDetail = openDetail; // inline onclick 용
 </script>
 </body>
 </html>

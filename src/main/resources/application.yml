@@ -6,7 +6,7 @@ spring:
 
   jackson:
     deserialization:
-      FAIL_ON_UNKNOWN_PROPERTIES: false
+      fail-on-unknown-properties: false
 
   datasource:
     url: jdbc:h2:mem:testdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
@@ -52,7 +52,8 @@ userprofile:
 chatbot:
   python:
     base-url: http://127.0.0.1:8082
-    read-timeout-ms: 600000   # 10분
+    connect-timeout-ms: 500000
+    read-timeout-ms: 6000000
 
 
 workbook:

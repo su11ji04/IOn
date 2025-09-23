@@ -4,17 +4,21 @@ import capstone.support.userprofile.UserProfileLoader;
 import capstone.user.entity.User;
 import capstone.user.repository.UserRepository;
 import capstone.voicereport.dto.AnalysisReportDto;
+import capstone.voicereport.dto.MySpeechStyleResponse;
 import capstone.voicereport.entity.*;
 import capstone.voicereport.repository.VoiceReportRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.regex.Pattern;
 import java.io.IOException;
 import java.nio.file.*;
 import java.time.LocalDate;
@@ -257,6 +261,76 @@ public class VoiceReportService {
                 .strength(r.getStrength())
                 .build();
 
+    }
+
+    @Transactional(readOnly = true)
+    public MySpeechStyleResponse buildMyStyle(Long userId, int limit) {
+        // 최근 N개 리포트 조회
+        Page<VoiceReport> page = voiceReportRepository.findByUser_Id(
+                userId,
+                PageRequest.of(0, limit, Sort.by("createdAt").descending())
+        );
+        List<VoiceReport> reports = page.getContent();
+        if (reports.isEmpty()) {
+            return MySpeechStyleResponse.builder()
+                    .userId(userId)
+                    .reportCount(0)
+                    .overallFeedbacks(List.of())
+                    .parentExpressions(List.of())
+                    .topKeywords(Map.of())
+                    .build();
+        }
+
+        // 최근 리포트들의 overallFeedback 모음
+        List<String> overallFeedbacks = reports.stream()
+                .map(VoiceReport::getOverallFeedback)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
+
+        // 부모 표현 모음
+        List<String> parentExprs = reports.stream()
+                .map(VoiceReport::getExpression)
+                .filter(Objects::nonNull)
+                .map(Expression::getParentExpression)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
+
+        // 간단 키워드 카운트 (한글/영문 단어만 추출)
+        Pattern token = Pattern.compile("[\\p{IsAlphabetic}가-힣]{2,}");
+        Map<String,Integer> freq = new HashMap<>();
+        reports.forEach(r -> {
+            String text = String.join(" ",
+                    Optional.ofNullable(r.getOverallFeedback()).orElse(""),
+                    Optional.ofNullable(r.getConversationSummary()).orElse(""),
+                    Optional.ofNullable(r.getStrength()).orElse("")
+            );
+            var m = token.matcher(text);
+            while (m.find()) {
+                String w = m.group().toLowerCase();
+                freq.merge(w, 1, Integer::sum);
+            }
+        });
+
+        // 상위 10개 키워드 추출
+        Map<String,Integer> topKeywords = freq.entrySet().stream()
+                .sorted((a,b) -> Integer.compare(b.getValue(), a.getValue()))
+                .limit(10)
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey, Map.Entry::getValue,
+                        (x,y) -> x, LinkedHashMap::new
+                ));
+
+        return MySpeechStyleResponse.builder()
+                .userId(userId)
+                .reportCount(reports.size())
+                .overallFeedbacks(overallFeedbacks)
+                .parentExpressions(parentExprs)
+                .topKeywords(topKeywords)
+                .build();
     }
 
     // 기본값 주입

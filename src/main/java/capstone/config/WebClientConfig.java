@@ -2,6 +2,7 @@ package capstone.config;
 
 import capstone.chatbot.config.ChatbotPythonProperties;
 import capstone.workbook.config.WorkbookPythonProperties;   // ✅ 추가
+import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.handler.timeout.WriteTimeoutHandler;
 import lombok.RequiredArgsConstructor;
@@ -22,13 +23,13 @@ import java.util.concurrent.TimeUnit;
 @Configuration
 @RequiredArgsConstructor
 @EnableConfigurationProperties({
-        ChatbotPythonProperties.class,          // ✅ 쉼표로 구분
-        WorkbookPythonProperties.class          // ✅ 중괄호로 감싸기
+        ChatbotPythonProperties.class,
+        WorkbookPythonProperties.class
 })
 public class WebClientConfig {
 
     private final ChatbotPythonProperties props;
-    private final WorkbookPythonProperties workbookProps;   // ✅ 주입 대상
+    private final WorkbookPythonProperties workbookProps;
 
     private static final Logger log = LoggerFactory.getLogger(WebClientConfig.class);
 
@@ -46,17 +47,19 @@ public class WebClientConfig {
 
     @Bean(name = "chatbotWebClient")
     public WebClient chatbotWebClient() {
-        HttpClient http = HttpClient.create()
-                .doOnConnected(conn -> {
-                    conn.addHandlerLast(new ReadTimeoutHandler(props.getReadTimeoutMs(), TimeUnit.MILLISECONDS));
-                    conn.addHandlerLast(new WriteTimeoutHandler(props.getReadTimeoutMs(), TimeUnit.MILLISECONDS));
-                });
-
-        String base = props.getBaseUrl();
+        String base = props.getBaseUrl(); // application.yml 의 chatbot.python.base-url
         log.info("[CHATBOT] Using baseUrl={}", base);
         if (base == null || !(base.startsWith("http://") || base.startsWith("https://"))) {
             throw new IllegalArgumentException("chatbot.python.base-url must start with http:// or https:// : " + base);
         }
+
+        HttpClient http = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, props.getConnectTimeoutMs())
+                .responseTimeout(Duration.ofMillis(props.getReadTimeoutMs()))
+                .doOnConnected(conn -> {
+                    conn.addHandlerLast(new ReadTimeoutHandler(props.getReadTimeoutMs(), TimeUnit.MILLISECONDS));
+                    conn.addHandlerLast(new WriteTimeoutHandler(props.getReadTimeoutMs(), TimeUnit.MILLISECONDS));
+                });
 
         return WebClient.builder()
                 .baseUrl(base)

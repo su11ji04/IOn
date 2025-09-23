@@ -1,42 +1,42 @@
+// src/main/java/capstone/chatbot/controller/ChatbotController.java
 package capstone.chatbot.controller;
 
-import capstone.chatbot.dto.ChatAnswerResponse;
-import capstone.chatbot.dto.ChatAskRequest;
-import capstone.chatbot.service.ChatbotPythonClient;
-import jakarta.validation.Valid;
+import capstone.chatbot.dto.Chat;
+import capstone.chatbot.dto.ChatAnswer;
+import capstone.chatbot.dto.ChatQuestion;
+import capstone.chatbot.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
-
-@Slf4j
-@Controller
+@RestController
+@RequestMapping("/api/chat")
 @RequiredArgsConstructor
-@RequestMapping
+@Slf4j
 public class ChatbotController {
+    private final ChatService chatService;
 
-    private final ChatbotPythonClient chatbotPythonClient;
+    @PostMapping(value = "/ask", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    public ChatAnswer ask(@RequestBody ChatQuestion req) {
+        return chatService.askOne(req);
+    }
 
-    @PostMapping(path = "/api/chatbot/ask",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseBody
-    public ResponseEntity<ChatAnswerResponse> ask(@Valid @RequestBody ChatAskRequest req) {
-        // ✅ 질문 수신 로그
-        log.info("[ChatbotController] /api/chatbot/ask called. question='{}'", req.getQuestion());
+    @GetMapping(value = "/list", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Page<Chat>> list(
+            @RequestParam(name = "userId", defaultValue = "u001") String userId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+        log.info("GET /api/chat/list userId={}, page={}, size={}", userId, page, size);
+        return ResponseEntity.ok(chatService.list(userId, page, size));
+    }
 
-        ChatAnswerResponse res = chatbotPythonClient.ask(req);
-
-        // ✅ 응답 요약 로그
-        log.info("[ChatbotController] response received. usedUserId={}, answerPreview={}",
-                res.getUsedUserId(),
-                (res.getAnswer() != null && res.getAnswer().length() > 80)
-                        ? res.getAnswer().substring(0, 80) + "..."
-                        : res.getAnswer());
-
-        return ResponseEntity.ok(res);
+    @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Chat> get(@PathVariable("id") String id) {
+        log.info("GET /api/chat/{}", id);
+        return ResponseEntity.ok(chatService.get(id));
     }
 }

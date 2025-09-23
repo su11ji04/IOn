@@ -87,7 +87,7 @@ def chat_ask(payload: ChatAskPayload):
 if __name__ == "__main__":
     import uvicorn
 
-    # ✅ OpenAI API key 체크
+    # OpenAI API key
     try:
         api_key = open("keys/openai_key.txt", "r", encoding="utf-8").read().strip()
         client = OpenAI(api_key=api_key)

@@ -1,5 +1,6 @@
 package capstone.voicereport.controller;
 
+import capstone.voicereport.dto.MySpeechStyleResponse;
 import capstone.voicereport.service.VoiceReportResponse;
 import capstone.voicereport.service.VoiceReportService;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +20,7 @@ public class VoiceReportController {
 
     private final VoiceReportService voiceReportService;
 
-    // 음성 파일 -> VOICEREPORT CONTROLLER
+    // 음성 파일 및 보이스리포트 생성
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<VoiceReportResponse> create(
             @RequestPart("audio") MultipartFile audio
@@ -54,4 +55,12 @@ public class VoiceReportController {
         voiceReportService.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    //나의 말투 분석
+    @GetMapping("/my-style")
+    public ResponseEntity<MySpeechStyleResponse> myStyle(
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(value = "limit", defaultValue = "5") int limit
+    ) { return ResponseEntity.ok(voiceReportService.buildMyStyle(userId, limit)); }
+
 }

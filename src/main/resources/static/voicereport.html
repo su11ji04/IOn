@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>Voice Report</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        :root { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+        body { max-width: 1160px; margin: 24px auto; padding: 0 16px; }
+        .grid { display:grid; grid-template-columns: 1.1fr 1fr; gap:16px; }
+        @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+        .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.04); margin-bottom: 16px; }
+        .btn { appearance:none; border:0; background:#111827; color:white; padding:10px 16px; border-radius:10px; cursor:pointer; }
+        .btn[disabled]{ opacity:.6; cursor:not-allowed; }
+        .muted { color:#6b7280; font-size: 12px; }
+        .err { color:#b91c1c; white-space:pre-wrap; }
+        .table { width:100%; border-collapse: collapse; }
+        .table th,.table td{ border-bottom:1px solid #e5e7eb; padding:8px; text-align:left; vertical-align: top; }
+        .kvs { display:grid; grid-template-columns: 140px 1fr; gap:6px 10px; }
+        .tag { background:#eef2ff; color:#3730a3; font-size:12px; padding:2px 8px; border-radius:999px; }
+        ul { margin: 6px 0 0 20px; }
+    </style>
+</head>
+<body>
+<h1>Voice Report</h1>
+<p class="muted">1) 업로드하면 새 리포트 생성 → 2) 전체 내용 보기 → 3) 왼쪽 목록(제목/날짜) 클릭으로 전환 → 4) “나의 말투 분석” 조회</p>
+
+<div class="grid">
+    <!-- 좌측: 업로드 + 목록 + 말투 분석 -->
+    <section>
+        <!-- 업로드 -->
+        <div class="card">
+            <h3>1. 음성 업로드 & 리포트 생성</h3>
+            <input id="audio" type="file" accept="audio/*" />
+            <button id="send" class="btn">업로드 & 분석</button>
+            <span id="status" class="muted"></span>
+            <div id="error" class="err"></div>
+        </div>
+
+        <!-- 목록(제목 + 날짜) -->
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0">2. 생성된 모든 리포트 목록</h3>
+                <div>
+                    <label class="muted">userId</label>
+                    <input id="userId" type="number" min="1" style="width:90px" placeholder="예: 1" />
+                    <button id="refresh" class="btn" style="margin-left:6px;">새로고침</button>
+                </div>
+            </div>
+            <p class="muted" style="margin-top:6px;">행을 클릭하면 우측에 “전체 내용”이 열립니다.</p>
+            <table class="table" id="listTable">
+                <thead><tr><th style="width:70%">제목</th><th>날짜</th></tr></thead>
+                <tbody id="listBody"><tr><td colspan="2" class="muted">데이터 없음</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- 나의 말투 분석 -->
+        <div class="card">
+            <h3>3. 나의 말투 분석 (최근 5개)</h3>
+            <div>
+                <label class="muted">userId</label>
+                <input id="insUserId" type="number" min="1" style="width:90px" placeholder="예: 1" />
+                <button id="insightsBtn" class="btn" style="margin-left:6px;">조회하기</button>
+            </div>
+            <div id="insights" style="margin-top:12px; display:none;">
+                <p><b>사용된 리포트:</b> <span id="usedReports"></span> <span class="tag" id="insUserTag"></span></p>
+                <h4>최근 전반 피드백</h4><ul id="overallList"></ul>
+                <h4>부모 표현</h4><ul id="exprList"></ul>
+                <h4>자주 등장한 단어</h4><ul id="keywordList"></ul>
+            </div>
+        </div>
+
+        <p><a href="/">← 홈으로</a></p>
+    </section>
+
+    <!-- 우측: 단일 리포트 "전체 내용" -->
+    <aside>
+        <div class="card">
+            <h3>리포트 전체 내용</h3>
+            <div id="detailEmpty" class="muted">아직 선택/생성된 리포트가 없습니다.</div>
+            <div id="detail" style="display:none;">
+                <div class="kvs">
+                    <div><b>제목</b></div><div id="d_title"></div>
+                    <div><b>날짜</b></div><div id="d_day"></div>
+                    <div><b>요약</b></div><div id="d_summary"></div>
+                    <div><b>전반 피드백</b></div><div id="d_overall"></div>
+                    <div><b>아이 태도</b></div><div id="d_kidAtt"></div>
+                    <div><b>강점</b></div><div id="d_strength"></div>
+                    <div><b>발화 빈도</b></div><div id="d_freq"></div>
+                </div>
+
+                <h4 style="margin-top:14px;">표현/상황</h4>
+                <table class="table">
+                    <tbody>
+                    <tr><th style="width:140px">부모 표현</th><td id="d_pexpr"></td></tr>
+                    <tr><th>아이 표현</th><td id="d_kexpr"></td></tr>
+                    <tr><th>부모 상황</th><td id="d_pcond"></td></tr>
+                    <tr><th>아이 상황</th><td id="d_kcond"></td></tr>
+                    <tr><th>표현 피드백</th><td id="d_exprfb"></td></tr>
+                    </tbody>
+                </table>
+
+                <h4>감정 타임라인</h4>
+                <ul id="d_timeline"></ul>
+
+                <h4>대체 표현 제안</h4>
+                <table class="table">
+                    <thead><tr><th>현재 표현</th><th>제안 표현</th></tr></thead>
+                    <tbody id="d_proposals"></tbody>
+                </table>
+            </div>
+        </div>
+    </aside>
+</div>
+
+<script>
+    const $ = id => document.getElementById(id);
+
+    // ---------- 업로드 ----------
+    $('send').addEventListener('click', async () => {
+        clearError(); setStatus('');
+        const file = $('audio').files[0];
+        if (!file) return setError('오디오 파일을 선택하세요.');
+
+        const fd = new FormData(); fd.append('audio', file, file.name);
+        $('send').disabled = true; setStatus('업로드 중…');
+
+        try {
+            const res = await fetch('/api/voice-reports', { method:'POST', body: fd });
+            const data = await res.json().catch(()=>null);
+            if (!res.ok) return setError('서버 오류: ' + JSON.stringify(data || {}));
+            setStatus('분석 완료!'); renderDetail(data);
+            // 목록 갱신
+            await loadList();
+        } catch (e) {
+            setError('네트워크 오류: ' + e);
+        } finally {
+            $('send').disabled = false;
+        }
+    });
+
+    // ---------- 목록 ----------
+    $('refresh').addEventListener('click', loadList);
+
+    async function loadList() {
+        const userId = $('userId').value?.trim();
+        const q = new URLSearchParams();
+        if (userId) q.set('userId', userId);
+        q.set('page','0'); q.set('size','20');
+
+        const res = await fetch('/api/voice-reports' + (q.toString()?`?${q}`:''));
+        const page = await res.json();
+        const items = (page.content || []);
+        const tbody = $('listBody'); tbody.innerHTML = '';
+        if (items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" class="muted">데이터 없음</td></tr>';
+            return;
+        }
+        for (const r of items) {
+            const tr = document.createElement('tr');
+            const td1 = document.createElement('td'); td1.textContent = r.subTitle || '(제목 없음)';
+            const td2 = document.createElement('td'); td2.textContent = r.day || '';
+            tr.appendChild(td1); tr.appendChild(td2);
+            tr.style.cursor = 'pointer';
+            tr.addEventListener('click', async () => {
+                const full = await fetch(`/api/voice-reports/${r.id}`).then(x=>x.json());
+                renderDetail(full);
+            });
+            tbody.appendChild(tr);
+        }
+    }
+
+    // ---------- 말투 분석 ----------
+    $('insightsBtn').addEventListener('click', async () => {
+        const id = $('insUserId').value?.trim();
+        if (!id) { alert('userId를 입력하세요. (테스트라면 1 추천)'); return; }
+        const res = await fetch(`/api/voice-reports/my-style?userId=${encodeURIComponent(id)}&limit=5`);
+        const data = await res.json();
+        renderInsights(id, data);
+    });
+
+    function renderInsights(userId, r) {
+        $('insights').style.display = 'block';
+        $('usedReports').textContent = r.reportCount ?? 0;
+        $('insUserTag').textContent = `userId=${userId}`;
+
+        $('overallList').innerHTML = '';
+        (r.overallFeedbacks || []).forEach(s => addLi('overallList', s));
+
+        $('exprList').innerHTML = '';
+        (r.parentExpressions || []).forEach(s => addLi('exprList', s));
+
+        $('keywordList').innerHTML = '';
+        if (r.topKeywords) {
+            Object.entries(r.topKeywords).forEach(([w,c]) => addLi('keywordList', `${w} (${c})`));
+        }
+    }
+
+    // ---------- 상세 렌더 ----------
+    function renderDetail(r) {
+        $('detailEmpty').style.display = 'none';
+        $('detail').style.display = 'block';
+
+        setText('d_title', r.subTitle);
+        setText('d_day', r.day);
+        setText('d_summary', r.conversationSummary);
+        setText('d_overall', r.overallFeedback);
+        setText('d_kidAtt', r.kidAttitude);
+        setText('d_strength', r.strength);
+
+        const pf = r.frequency?.parentFrequency ?? null;
+        const kf = r.frequency?.kidFrequency ?? null;
+        const ff = r.frequency?.frequencyFeedback || '';
+        setText('d_freq', `${pf ?? '-'}% / ${kf ?? '-'}%  ·  ${ff}`);
+
+        setText('d_pexpr', r.expression?.parentExpression);
+        setText('d_kexpr', r.expression?.kidExpression);
+        setText('d_pcond', r.expression?.parentConditions);
+        setText('d_kcond', r.expression?.kidConditions);
+        setText('d_exprfb', r.expression?.expressionFeedback);
+
+        const ul = $('d_timeline'); ul.innerHTML = '';
+        (r.emotion?.timeline || []).forEach(t => addLi('d_timeline', `${t?.time || '--:--'} · ${t?.momentEmotion || '-'}`));
+
+        const tbody = $('d_proposals'); tbody.innerHTML = '';
+        (r.changeProposal || []).forEach(cp => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td>${escapeHtml(cp?.existingExpression||'')}</td><td>${escapeHtml(cp?.proposalExpression||'')}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ---------- 유틸 ----------
+    function setText(id, v){ $(id).textContent = v || '-'; }
+    function addLi(id, text){ const li=document.createElement('li'); li.textContent=text||'-'; $(id).appendChild(li); }
+    function setStatus(t){ $('status').textContent = t||''; }
+    function setError(t){ $('error').textContent = t||''; }
+    function clearError(){ setError(''); }
+    function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[m])); }
+
+    // 최초 진입시 목록 1회 로드
+    loadList().catch(console.error);
+</script>
+</body>
+</html>

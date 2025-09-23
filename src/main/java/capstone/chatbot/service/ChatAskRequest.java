@@ -1,4 +1,4 @@
-package capstone.chatbot.dto;
+package capstone.chatbot.service;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
@@ -8,7 +8,10 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ChatAskRequest {
-    /** UI에서 입력한 질문 */
+    @NotBlank
+    private String userId;
+
     @NotBlank
     private String question;
 }
+

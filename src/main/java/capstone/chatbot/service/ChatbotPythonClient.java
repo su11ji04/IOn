@@ -1,12 +1,12 @@
-// capstone/chatbot/service/ChatbotPythonClient.java
+// src/main/java/capstone/chatbot/service/ChatbotPythonClient.java
 package capstone.chatbot.service;
 
-import capstone.chatbot.dto.ChatAnswerResponse;
-import capstone.chatbot.dto.ChatAskRequest;
+import capstone.chatbot.dto.ChatQuestion;
 import capstone.support.userprofile.UserProfile;
 import capstone.support.userprofile.UserProfileLoader;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -15,6 +15,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Component
@@ -22,7 +23,6 @@ public class ChatbotPythonClient {
 
     private final WebClient chatbotWebClient;
     private final UserProfileLoader userProfileLoader;
-    private static final String FIXED_USER_ID = "u001";
 
     public ChatbotPythonClient(
             @Qualifier("chatbotWebClient") WebClient chatbotWebClient,
@@ -32,63 +32,64 @@ public class ChatbotPythonClient {
         this.userProfileLoader = userProfileLoader;
     }
 
-    public ChatAnswerResponse ask(ChatAskRequest req) {
-        // 1) CSV에서 u001 로드
-        var opt = userProfileLoader.find(FIXED_USER_ID);
-        if (opt.isEmpty()) {
-            log.error("[ChatbotPythonClient] UserProfile not found for userId={}", FIXED_USER_ID);
-            throw new IllegalArgumentException("User not found: " + FIXED_USER_ID);
-        }
-        UserProfile up = opt.get();
+    public PythonAnswer ask(ChatQuestion req) {
+        // 1) userId 보정
+        String userId = (req.getUserId() == null || req.getUserId().isBlank()) ? "u001" : req.getUserId();
 
-        // ✅ CSV 로드 성공 로그 (Lombok @Value면 toString 안전)
-        log.info("[ChatbotPythonClient] loaded user profile from CSV: {}", up);
+        // 2) CSV 프로필 로드 + 로그
+        log.info("[UserProfileLoader] find userId={}", userId);
+        Optional<UserProfile> opt = userProfileLoader.find(userId);
+        opt.ifPresentOrElse(
+                p -> log.info("[UserProfileLoader] loaded profile for {} => {}", userId, p),
+                () -> log.warn("[UserProfileLoader] no profile found for {}", userId)
+        );
 
-        // 2) 파이썬 user 매핑
-        Object childAge = up.getChildAge();
-        try {
-            if (up.getChildAge() != null) childAge = Integer.valueOf(up.getChildAge().trim());
-        } catch (NumberFormatException ignore) { /* keep string */ }
+        // 3) payload.user 구성 (최소 {}라도 반드시 포함)
+        Map<String, Object> user = opt.map(userProfileLoader::toPythonMap)
+                .map(HashMap::new) // mutable 보장
+                .orElseGet(HashMap::new);
 
-        Map<String, Object> user = new HashMap<>();
-        user.put("child_age", childAge);
-        user.put("parenting_style", up.getParentingStyle());
-        user.put("parenting_goal", up.getParentingGoal());
-        user.put("child_traits", up.getChildTraits());
-        user.put("preferred_tone", up.getPreferredTone());
-        user.put("language", up.getLanguage());
-        user.put("health_issues", up.getHealthIssues());
-
-        // 3) 최종 payload 구성
+        // 4) 최종 payload
         Map<String, Object> payload = new HashMap<>();
+        payload.put("user_id", userId);
         payload.put("question", req.getQuestion());
-        payload.put("user_id", up.getUserId());
         payload.put("user", user);
 
-        // ✅ 전송 직전 요약 로그 (질문, user_id, user 요약)
-        log.info("[ChatbotPythonClient] sending to Python: user_id={}, question='{}'",
-                up.getUserId(), req.getQuestion());
-        log.debug("[ChatbotPythonClient] payload.user={}", user);
+        log.info("[ChatbotPythonClient] final payload to python = {}", payload);
 
         try {
-            ChatAnswerResponse res = chatbotWebClient.post()
-                    .uri("/chat/ask")
+            Map<String, Object> resp = chatbotWebClient.post()
+                    .uri("/chat/ask") // FastAPI 라우트 확인
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .bodyValue(payload)
                     .retrieve()
-                    .bodyToMono(ChatAnswerResponse.class)
+                    .bodyToMono(new ParameterizedTypeReference<Map<String, Object>>() {})
                     .block();
 
-            // ✅ 응답 수신 로그
-            if (res != null) {
-                log.info("[ChatbotPythonClient] python responded. usedUserId={}, answer.len={}",
-                        res.getUsedUserId(), res.getAnswer() == null ? 0 : res.getAnswer().length());
-                log.debug("[ChatbotPythonClient] python response meta={}", res.getMeta());
-            } else {
-                log.warn("[ChatbotPythonClient] python response mapped to null");
+            String answer = null;
+            String usedUserId = userId;
+            Map<String, Object> meta = Map.of();
+
+            if (resp != null) {
+                Object a = resp.get("answer");
+                if (a != null) answer = String.valueOf(a);
+
+                Object u = resp.get("used_user_id");
+                if (u != null) usedUserId = String.valueOf(u);
+
+                Object m = resp.get("meta");
+                if (m instanceof Map) {
+                    //noinspection unchecked
+                    meta = (Map<String, Object>) m;
+                }
             }
-            return res;
+
+            log.info("[ChatbotPythonClient] python responded. usedUserId={}, answer.len={}",
+                    usedUserId, answer == null ? 0 : answer.length());
+
+            return new PythonAnswer(answer, usedUserId, meta);
+
         } catch (WebClientResponseException e) {
             String body = e.getResponseBodyAsString(StandardCharsets.UTF_8);
             log.error("[ChatbotPythonClient] HTTP {} {} => {}", e.getRawStatusCode(), e.getStatusText(), body);
