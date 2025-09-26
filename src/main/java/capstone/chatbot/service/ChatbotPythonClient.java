@@ -1,4 +1,3 @@
-// src/main/java/capstone/chatbot/service/ChatbotPythonClient.java
 package capstone.chatbot.service;
 
 import capstone.chatbot.dto.ChatQuestion;
@@ -44,7 +43,7 @@ public class ChatbotPythonClient {
                 () -> log.warn("[UserProfileLoader] no profile found for {}", userId)
         );
 
-        // 3) payload.user 구성 (최소 {}라도 반드시 포함)
+        // 3) payload.user 구성
         Map<String, Object> user = opt.map(userProfileLoader::toPythonMap)
                 .map(HashMap::new) // mutable 보장
                 .orElseGet(HashMap::new);

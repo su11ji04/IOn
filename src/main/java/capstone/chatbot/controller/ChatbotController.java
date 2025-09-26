@@ -19,11 +19,13 @@ import org.springframework.web.bind.annotation.*;
 public class ChatbotController {
     private final ChatService chatService;
 
+    // 질문 + 답변
     @PostMapping(value = "/ask", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ChatAnswer ask(@RequestBody ChatQuestion req) {
         return chatService.askOne(req);
     }
 
+    // 질문 목록 조회
     @GetMapping(value = "/list", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Page<Chat>> list(
             @RequestParam(name = "userId", defaultValue = "u001") String userId,
@@ -34,6 +36,7 @@ public class ChatbotController {
         return ResponseEntity.ok(chatService.list(userId, page, size));
     }
 
+    // 질문 단건 조회
     @GetMapping(value = "/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Chat> get(@PathVariable("id") String id) {
         log.info("GET /api/chat/{}", id);

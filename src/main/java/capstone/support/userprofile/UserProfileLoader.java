@@ -1,5 +1,6 @@
 package capstone.support.userprofile;
 
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,11 @@ import java.util.*;
 public class UserProfileLoader {
 
     private final UserProfileProperties props;
+
+    @PostConstruct
+    void init() {
+        log.info("[USERPROFILE] csvPath={}", props.getCsvPath());
+    }
 
     public Optional<UserProfile> find(String userId) {
         if (userId == null || userId.isBlank()) return Optional.empty();

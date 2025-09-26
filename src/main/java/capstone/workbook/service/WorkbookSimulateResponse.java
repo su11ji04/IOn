@@ -1,5 +1,6 @@
-package capstone.workbook.dto;
+package capstone.workbook.service;
 
+import capstone.workbook.dto.WorkbookActivity;
 import lombok.*;
 import java.util.List;
 

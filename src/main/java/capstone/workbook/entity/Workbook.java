@@ -15,14 +15,14 @@ public class Workbook {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String userId;          // ex) u004
-    private String topic;           // ex) 나를 아는 부모
+    private String userId;
+    private String topic;
 
-    private Integer activityCount;  // 활동 개수(미리보기/검색용)
+    private Integer activityCount;
 
     @Lob
     @Column(columnDefinition = "CLOB")
-    private String rawJson;         // Python 응답 전체(JSON 문자열)
+    private String rawJson;
 
     private LocalDateTime createdAt;
 }

@@ -20,13 +20,12 @@ public class ChatService {
     private final ChatRepository chatRepository;
 
     public ChatAnswer askOne(ChatQuestion req) {
-        // chatQuestionId 없으면 서버가 생성
+        // chatQuestionId
         String chatQuestionId = (req.getChatQuestionId() == null || req.getChatQuestionId().isBlank())
                 ? UUID.randomUUID().toString()
                 : req.getChatQuestionId();
 
         String userId = (req.getUserId() == null || req.getUserId().isBlank()) ? "u001" : req.getUserId();
-        // req 객체에 반영(아래 pythonClient로 넘길 때 null 방지)
         req.setUserId(userId);
 
         // 1) 파이썬 호출
@@ -35,7 +34,7 @@ public class ChatService {
         // 2) chatAnswerId 생성
         String chatAnswerId = UUID.randomUUID().toString();
 
-        // 3) DB 저장 (NOT NULL 필드 모두 채우기)
+        // 3) DB 저장
         Chat saved = chatRepository.save(
                 Chat.builder()
                         .userId(req.getUserId())
@@ -56,7 +55,6 @@ public class ChatService {
     }
 
     public Page<Chat> list(String userId, int page, int size) {
-        // Repository 시그니처에 맞게 userId 기준으로 조회
         return chatRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(page, size));
     }
 

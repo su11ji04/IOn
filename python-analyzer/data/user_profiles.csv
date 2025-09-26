@@ -1,0 +1,6 @@
+user_id,child_age,parenting_style,parenting_goal,child_traits,preferred_tone,language,allergies_or_health_issues
+u001,4,자유방임형,창의적인 아이로 성장하길 원함,예민하고 감정 표현이 풍부함,부드럽고 따뜻한,Korean,없음
+u002,2,권위있는 지도형,규칙을 잘 따르는 아이를 원함,낯가림이 심하고 수줍음이 많음,간결하고 명확한,Korean,우유 알러지
+u003,5,헬리콥터형,다양한 활동을 경험시키고 싶음,에너지가 많고 산만함,유머러스한,Korean,천식 있음
+u004,7,방임형,자율성을 키워주고 싶음,고집이 세고 자기 주장 강함,차분한,Korean,없음
+u005,6,애착 중심형,감정적으로 안정된 아이로 성장하길,"논리적인 사고를 잘함, 말이 빠름",교육적인,Korean,피부 아토피

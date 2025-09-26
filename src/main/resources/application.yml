@@ -59,6 +59,7 @@ chatbot:
 workbook:
   python:
     base-url: http://127.0.0.1:8083
+    feedback-path: /workbook/feedback
     read-timeout-ms: 120000
 
 

@@ -1,6 +1,7 @@
 package capstone.config;
 
 import capstone.chatbot.config.ChatbotPythonProperties;
+import capstone.support.userprofile.UserProfileProperties;
 import capstone.workbook.config.WorkbookPythonProperties;   // ✅ 추가
 import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
@@ -24,7 +25,8 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 @EnableConfigurationProperties({
         ChatbotPythonProperties.class,
-        WorkbookPythonProperties.class
+        WorkbookPythonProperties.class,
+        UserProfileProperties.class
 })
 public class WebClientConfig {
 
@@ -75,11 +77,11 @@ public class WebClientConfig {
     public WebClient workbookWebClient() {
         String base = workbookProps.getBaseUrl();
         log.info("[WORKBOOK] Using baseUrl={}", base);
-        if (base == null || !(base.startsWith("http://") || base.startsWith("https://"))) {
-            throw new IllegalArgumentException("workbook.python.base-url must start with http:// or https:// : " + base);
-        }
 
         HttpClient http = HttpClient.create()
+                .wiretap("reactor.netty.http.client",
+                        io.netty.handler.logging.LogLevel.DEBUG,
+                        reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL) // ★ 추가
                 .responseTimeout(Duration.ofMillis(workbookProps.getReadTimeoutMs()));
 
         return WebClient.builder()
