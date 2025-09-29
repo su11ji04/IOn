@@ -7,7 +7,8 @@ from workbook.utils import load_openai_api_key
 from workbook.activity_builder import _build_one_activity
 from workbook.models import (
     McqOut, SequenceStartIn, SequenceNextWritingIn, WritingOut,
-    SequenceToken, SimStartIn, SimStartOut, SimNextIn, SimNextOut
+    SequenceToken, SimStartIn, SimStartOut, SimNextIn, SimNextOut,
+    CreateWorkbookIn, CreateWorkbookOut,
 )
 
 router = APIRouter(prefix="/workbook/sequence", tags=["sequence"])
@@ -21,10 +22,35 @@ def _pick(activity: Dict[str, Any], t: str) -> Dict[str, Any]:
             return item
     raise HTTPException(500, f"{t} not found in activity")
 
+# workbook 생성
+@router.post("/create", response_model=CreateWorkbookOut)
+def create_workbook(req: CreateWorkbookIn):
+    try:
+        activity = _build_one_activity(req.topic, req.user)
+        # activity(dict)를 WorkbookActivity로 캐스팅 (필드 이름 호환)
+        return CreateWorkbookOut(
+            activity_title=activity.get("activity_title") or "워크북",
+            activities=activity.get("activities") or []
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"create_workbook failed: {e}")
+
+
 @router.post("/start", response_model=McqOut)
 def sequence_start(req: SequenceStartIn):
     try:
-        activity = _build_one_activity(req.topic, req.user)
+
+        if req.activity is not None:
+            activity: Dict[str, Any] = {
+                "activity_title": req.activity.activity_title,
+                "activities": [a.model_dump() if hasattr(a, "model_dump") else a for a in req.activity.activities]
+            }
+        else:
+            if not req.topic or not req.user:
+                raise HTTPException(400, "Either provide 'activity' or both 'topic' and 'user'.")
+            activity = _build_one_activity(req.topic, req.user)
 
         mcq = _pick(activity, "MCQ")
         options = mcq.get("options") or []
@@ -35,6 +61,7 @@ def sequence_start(req: SequenceStartIn):
         if optimal not in options:
             raise HTTPException(500, "MCQ optimal_option must be one of options")
 
+        # WRITING 캐시
         try:
             wr = _pick(activity, "WRITING")
             writing_cache = {
@@ -47,8 +74,8 @@ def sequence_start(req: SequenceStartIn):
         tok = SequenceToken(
             id=str(uuid4()),
             payload={
-                "topic": req.topic,
-                "user": req.user.dict(),
+                "topic": getattr(req, "topic", None),
+                "user": (req.user.dict() if getattr(req, "user", None) else None),
                 "activity_title": activity.get("activity_title"),
                 "activity_full": activity,
                 "mcq": {
@@ -64,6 +91,7 @@ def sequence_start(req: SequenceStartIn):
         raise
     except Exception as e:
         raise HTTPException(500, f"sequence_start failed: {e}")
+
 
 @router.post("/next/writing", response_model=WritingOut)
 def sequence_next_writing(req: SequenceNextWritingIn):
