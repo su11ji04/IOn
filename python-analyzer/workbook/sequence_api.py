@@ -119,24 +119,22 @@ def sim_start(req: SimStartIn):
 @router.post("/sim/next", response_model=SimNextOut)
 def sim_next(req: SimNextIn):
     try:
-        user_turns = sum(1 for t in req.history if t.role == "user") + (1 if req.parent_reply.strip() else 0)
+        user_turns = sum(1 for t in req.history if t.role == "user") + (1 if (req.parent_reply or "").strip() else 0)
         if user_turns >= 2:
             return SimNextOut(ai_line="", finished=True, final_feedback=None)
 
         client = _client()
         messages = [
-            {"role": "system", "content": "너는 아이 역할로 대화해. 한 번에 한 문장만, 짧고 자연스럽게 한국어로 답해. 상황과 이전 대사를 고려해."},
+            {"role": "system", "content": "너는 아이 역할로 대화해. 한 문장만, 짧고 자연스럽게 한국어. 상황과 이전 대사를 고려해."},
             {"role": "system", "content": f"상황: {req.situation}\n주제: {req.topic}"},
         ]
         for t in req.history:
-            if t.role == "ai":
-                messages.append({"role": "assistant", "content": t.text})
-            else:
-                messages.append({"role": "user", "content": t.text})
-        messages.append({"role": "user", "content": req.parent_reply})
+            messages.append({"role": "assistant" if t.role == "ai" else "user", "content": t.text})
+        if (req.parent_reply or "").strip():
+            messages.append({"role": "user", "content": req.parent_reply})
 
         resp = client.chat.completions.create(model="gpt-4", messages=messages, temperature=0.7)
-        ai_line = resp.choices[0].message.content.strip()
+        ai_line = (resp.choices[0].message.content or "").strip()
         return SimNextOut(ai_line=ai_line, finished=False, final_feedback=None)
     except Exception as e:
         raise HTTPException(500, f"sim_next failed: {e}")
