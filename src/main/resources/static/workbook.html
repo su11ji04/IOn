@@ -1,242 +1,295 @@
 <!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>Workbook Demo</title>
+    <meta charset="UTF-8" />
+    <title>Workbook Tester (Full UI)</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <style>
-        :root { --blue:#3b82f6; --blue-d:#2563eb; --bg:#f7f8fb; --muted:#6b7280; }
-        *{box-sizing:border-box}
-        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, 'Noto Sans KR', sans-serif; margin:0; background:var(--bg); }
-        header { background:var(--blue); color:#fff; padding:12px 20px; font-size:20px; }
-        .container { max-width:720px; margin:30px auto; padding:20px; background:#fff; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,.1);}
-        h2 { margin-top:0; font-size:18px; }
-        .options label { display:block; margin:8px 0; }
-        input[type=text] { width:100%; padding:10px; border:1px solid #e5e7eb; border-radius:8px; margin:10px 0; }
-        button { padding:10px 16px; border:none; border-radius:8px; background:var(--blue); color:#fff; cursor:pointer; }
-        button:hover { background:var(--blue-d); }
-        button:disabled { opacity:.6; cursor:not-allowed; }
-        .hidden { display:none; }
-        .muted { color:var(--muted); font-size:14px; }
-        .chat { border:1px solid #e5e7eb; border-radius:12px; padding:12px; height:260px; overflow:auto; background:#fafafa; }
-        .row { display:flex; gap:8px; margin:6px 0; align-items:flex-end; }
-        .row.ai { justify-content:flex-start; }
-        .row.user { justify-content:flex-end; }
-        .bubble { max-width:75%; padding:10px 12px; border-radius:14px; white-space:pre-wrap; word-break:break-word; }
-        .ai .bubble { background:#fff; border:1px solid #e5e7eb; border-top-left-radius:4px; }
-        .user .bubble { background:var(--blue); color:#fff; border-top-right-radius:4px; }
-        .role { font-size:12px; color:var(--muted); margin:0 6px; }
-        .final { border-top:1px dashed #e5e7eb; margin-top:10px; padding-top:10px; color:#111827; background:#fff; border-radius:8px; }
-        .spinner { display:inline-block; width:16px; height:16px; border:2px solid #ddd; border-top-color:var(--blue); border-radius:50%; animation:spin .8s linear infinite; vertical-align:-2px; }
-        @keyframes spin { to{ transform:rotate(360deg) } }
-        .hint-error { color:#b91c1c; }
-        .hint-ok { color:#065f46; }
+        :root { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial; }
+        body { margin: 24px; background: #0b0b0c; color: #e8e8ea; }
+        h1 { font-size: 20px; margin: 0 0 16px; }
+        .grid { display: grid; grid-template-columns: minmax(420px, 720px) minmax(300px, 1fr); gap: 16px; align-items: start; }
+        .card { background: #121316; border: 1px solid #23252a; border-radius: 14px; padding: 16px; }
+        .row { display: flex; gap: 8px; margin: 6px 0; align-items: center; }
+        label { width: 120px; color: #b7bac2; font-size: 13px; }
+        input, textarea {
+            flex: 1; background: #0f1013; border: 1px solid #2a2d34; color: #e8e8ea;
+            padding: 8px 10px; border-radius: 10px; outline: none;
+        }
+        textarea { min-height: 64px; }
+        button {
+            background: #2f67ff; color: white; border: none; padding: 10px 14px; border-radius: 10px;
+            cursor: pointer; font-weight: 600;
+        }
+        button.secondary { background: #1e2127; }
+        .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px; background: #181a1f; color: #cdd3df; font-size: 12px; border: 1px solid #282c34; }
+        .muted { color: #9aa0aa; font-size: 12px; }
+        .log { background: #0a0b0d; border: 1px solid #23252a; padding: 12px; border-radius: 12px; height: 540px; overflow: auto; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+        .section-title { font-weight: 700; margin: 10px 0 6px; color: #cdd3df; }
+        .mcq-option { display: block; width: 100%; text-align: left; margin: 6px 0; padding: 10px 12px; border-radius: 10px; background:#171a20; border:1px solid #2a2d34; cursor:pointer; }
+        .mcq-option:hover { background:#1b1f27; }
+        .bubble { max-width: 90%; margin: 6px 0; padding: 10px 12px; border-radius: 12px; line-height: 1.4; display:inline-block; }
+        .ai   { background:#18202b; border:1px solid #263244; }
+        .user { background:#1f1a20; border:1px solid #322634; align-self: flex-end; }
+        .col { display:flex; flex-direction:column; gap:6px; }
+        .flex { display:flex; gap:8px; }
+        hr { border-color:#23252a; }
+        ul { margin: 6px 0 0 18px; }
     </style>
 </head>
 <body>
-<header>Workbook 체험 (userId=u001 / workbookId=1)</header>
+<h1>📘 Workbook Tester (Spring 8080)</h1>
 
-<!-- 1단계: MCQ -->
-<div class="container" id="page-mcq">
-    <h2>1단계: 선택형</h2>
-    <p>아이에게 어떤 말을 해줄까?</p>
-    <div class="options">
-        <label><input type="radio" name="mcq" value="안녕"> 안녕</label>
-        <label><input type="radio" name="mcq" value="잘 가"> 잘 가</label>
-        <label><input type="radio" name="mcq" value="밥 먹었어?"> 밥 먹었어?</label>
-        <label><input type="radio" name="mcq" value="공부는 했니?"> 공부는 했니?</label>
+<div class="grid">
+    <!-- 좌측: UI -->
+    <div class="card">
+        <!-- 설정 -->
+        <div class="row"><label>Spring Base</label><input id="baseUrl" value="http://127.0.0.1:8080" /></div>
+        <div class="row"><label>User ID</label><input id="userId" value="u001" /></div>
+        <div class="row"><label>Child Age</label><input id="childAge" type="number" value="4" /></div>
+        <div class="row"><label>Topic</label><input id="topic" value="떼쓰는 아이" /></div>
+
+        <div class="row" style="margin-top:12px;">
+            <button id="btnCreate">1) 워크북 생성</button>
+            <button id="btnStart" class="secondary">2) 런 시작</button>
+        </div>
+
+        <div class="row" style="gap:12px; margin-top: 12px;">
+            <span class="pill">workbookId: <span id="wbId">-</span></span>
+            <span class="pill">runId: <span id="runId">-</span></span>
+            <span class="pill">step: <span id="step">-</span></span>
+        </div>
+
+        <hr>
+
+        <!-- MCQ 섹션 -->
+        <div id="mcqSec" style="display:none;">
+            <div class="section-title">① MCQ</div>
+            <div id="mcqQuestion" class="muted"></div>
+            <div id="mcqOptions" class="col" style="margin-top:8px;"></div>
+        </div>
+
+        <!-- WRITING 섹션 -->
+        <div id="writingSec" style="display:none; margin-top:12px;">
+            <div class="section-title">② WRITING</div>
+            <div id="writingQuestion" class="muted"></div>
+            <div class="row"><label>예시</label><input id="writingExample" readonly></div>
+            <div class="row"><label>내 답변</label><textarea id="writingText">지금 화가 많이 났구나. 네 마음 이해해. 오늘은 사지 않고 대신 집에서 같이 놀자.</textarea></div>
+            <div class="row"><button id="btnSubmitWriting">WRITING 제출</button></div>
+        </div>
+
+        <!-- SIMULATION 섹션 -->
+        <div id="simSec" style="display:none; margin-top:12px;">
+            <div class="section-title">③ SIMULATION</div>
+            <div id="situation" class="muted"></div>
+            <div id="chat" class="col" style="margin-top:8px;"></div>
+            <div class="flex">
+                <input id="parentReply" placeholder="부모 발화를 입력하세요" />
+                <button id="btnSimNext" class="secondary">다음 턴</button>
+            </div>
+        </div>
+
+        <!-- FEEDBACK 섹션 -->
+        <div id="fbSec" style="display:none; margin-top:12px;">
+            <div class="section-title">④ FEEDBACK</div>
+            <div id="fbOverall" class="muted" style="white-space:pre-line;"></div>
+            <ul id="fbTips"></ul>
+        </div>
     </div>
-    <button id="btn-mcq" type="button">제출하고 다음</button>
-    <div id="mcqResult" class="muted" style="margin-top:8px;"></div>
-</div>
 
-<!-- 2단계: WRITING -->
-<div class="container hidden" id="page-writing">
-    <h2>2단계: 서술형</h2>
-    <p>네가 아이에게 하고 싶은 말을 자유롭게 적어보세요.</p>
-    <input type="text" id="writingAnswer" placeholder="예: 오늘 하루 어땠어?"/>
-    <button id="btn-writing" type="button">제출하고 다음</button>
-    <div id="writingResult" class="muted" style="margin-top:8px;"></div>
-</div>
-
-<!-- 3단계: SIM -->
-<div class="container hidden" id="page-sim">
-    <h2>3단계: 시뮬레이션</h2>
-    <button id="btn-simstart" type="button">시뮬레이션 시작</button>
-    <div class="chat" id="chat" style="margin-top:12px;"></div>
-
-    <div id="simInput" class="hidden">
-        <input type="text" id="userReply" placeholder="아이에게 할 말을 입력"/>
-        <button id="btn-simnext" type="button">보내기</button>
+    <!-- 우측: 로그 -->
+    <div class="card">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+            <div class="section-title" style="margin:0;">Live Log</div>
+            <button id="btnClear" class="secondary">로그 지우기</button>
+        </div>
+        <div id="log" class="log"></div>
     </div>
-    <div id="simHint" class="muted" style="margin-top:6px;"></div>
 </div>
 
 <script>
-    // ---- step constants
-    const MCQ_STEP = 0, WRITING_STEP = 1, SIM_STEP = 2;
+    const $ = (id) => document.getElementById(id);
+    let state = {
+        workbookId: null, runId: null, step: null,
+        mcq: null, writing: null, situation: null, history: []
+    };
 
-    // ---- state
-    let sessionId = null;
-    let simFinished = false;
+    function log(title, obj, kind='INFO') {
+        const el = $('log');
+        const time = new Date().toLocaleTimeString();
+        const pretty = obj !== undefined ? JSON.stringify(obj, null, 2) : '';
+        el.innerText += `[${time}] ${kind} ${title}\n${pretty}\n\n`;
+        el.scrollTop = el.scrollHeight;
+    }
+    function setState(partial) {
+        state = { ...state, ...partial };
+        $('wbId').innerText = state.workbookId ?? '-';
+        $('runId').innerText = state.runId ?? '-';
+        $('step').innerText = state.step ?? '-';
+    }
+    function show(id, on=true){ $(id).style.display = on ? '' : 'none'; }
+    function disable(id, on=true){ $(id).disabled = on; }
 
-    // ---- helpers
-    function show(id) {
-        document.querySelectorAll(".container").forEach(el => el.classList.add("hidden"));
-        document.getElementById(id).classList.remove("hidden");
-        console.log("[UI] show:", id);
+    async function req(path, method='GET', body) {
+        const base = $('baseUrl').value.replace(/\/+$/,'');
+        const url = base + path;
+        const init = { method, headers: { 'Content-Type': 'application/json' } };
+        if (body !== undefined) init.body = JSON.stringify(body);
+        log(`${method} ${url}`, body, 'REQ');
+        const res = await fetch(url, init);
+        const text = await res.text();
+        let data; try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
+        log(`${res.status} ${res.statusText} ← ${method} ${url}`, data, 'RES');
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${text}`);
+        return data;
     }
-    function setText(el, html) { el.innerHTML = html; }
-    function addMsg(role, text) {
-        const chat = document.getElementById("chat");
-        const row = document.createElement("div");
-        row.className = `row ${role}`;
-        const who = document.createElement("div");
-        who.className = "role";
-        who.textContent = role === "ai" ? "아이" : "부모";
-        const bubble = document.createElement("div");
-        bubble.className = "bubble";
-        bubble.textContent = text;
-        if (role === "ai") row.appendChild(who);
-        row.appendChild(bubble);
-        if (role === "user") row.appendChild(who);
-        chat.appendChild(row);
-        chat.scrollTop = chat.scrollHeight;
+
+    // ---- MCQ ----
+    function renderMcq(mcq){
+        state.mcq = mcq;
+        show('mcqSec', true);
+        $('mcqQuestion').innerText = mcq.instruction || '(질문 없음)';
+        const wrap = $('mcqOptions');
+        wrap.innerHTML = '';
+        (mcq.options || []).forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'mcq-option';
+            btn.textContent = opt;
+            btn.onclick = () => answerMcq(opt);
+            wrap.appendChild(btn);
+        });
     }
-    function addFinal(text) {
-        const chat = document.getElementById("chat");
-        const wrap = document.createElement("div");
-        wrap.className = "final";
-        wrap.innerHTML = `<strong>최종 피드백</strong><br>${(text||"").replace(/\n/g,'<br>')}`;
-        chat.appendChild(wrap);
-        chat.scrollTop = chat.scrollHeight;
-    }
-    async function postJson(url, body, btn) {
+    async function answerMcq(answer){
+        if (!state.runId) return alert('먼저 런을 시작하세요.');
         try {
-            if (btn) btn.disabled = true;
-            console.log("[REQ]", url, body);
-            const res = await fetch(url, {
-                method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body: JSON.stringify(body)
-            });
-            const text = await res.text();  // 먼저 텍스트로 받아서 디버깅 도움
-            console.log("[RES]", res.status, text);
-            if (!res.ok) throw new Error(`HTTP ${res.status} - ${text}`);
-            return text ? JSON.parse(text) : {};
-        } finally {
-            if (btn) btn.disabled = false;
-        }
+            const data = await req(`/api/workbooks/runs/${state.runId}/answer/mcq`, 'POST', { answer });
+            renderWriting(data);
+            setState({ step: 'WRITING' });
+        } catch(e){ alert(e.message); }
     }
 
-    // ---- MCQ submit (1 → 2로 이동)
-    document.getElementById("btn-mcq").addEventListener("click", async (e) => {
-        const pick = document.querySelector('input[name="mcq"]:checked');
-        if (!pick) { alert("선택지를 고르세요"); return; }
+    // ---- WRITING ----
+    function renderWriting(wr){
+        state.writing = wr;
+        show('writingSec', true);
+        $('writingQuestion').innerText = wr.instruction || '';
+        // 서버가 snake_case/ camelCase 어느 쪽이든 표시되도록 처리
+        $('writingExample').value = wr.example_answer || wr.exampleAnswer || '';
+    }
 
-        const payload = { stepIndex: MCQ_STEP, userAnswer: pick.value };
-        const resBox = document.getElementById("mcqResult");
+    // ---- SIM ----
+    function appendBubble(role, text){
+        const wrap = $('chat');
+        const div = document.createElement('div');
+        div.className = `bubble ${role === 'ai' ? 'ai' : 'user'}`;
+        div.textContent = text;
+        wrap.appendChild(div);
+        wrap.scrollTop = wrap.scrollHeight;
+    }
+    function renderSimStart(sim){
+        show('simSec', true);
+        $('situation').innerText = sim.situation || '';
+        state.situation = sim.situation;
+        state.history = [{ role:'ai', text: sim.ai_first_line }];
+        $('chat').innerHTML = '';
+        appendBubble('ai', sim.ai_first_line || '');
+        // 입력 활성화 보장
+        disable('parentReply', false);
+        disable('btnSimNext', false);
+    }
 
+    // ---- FEEDBACK ----
+    function renderFeedback(fb){
+        $('fbOverall').textContent = fb.overall_comment || '(요약 없음)';
+        const ul = $('fbTips');
+        ul.innerHTML = '';
+        (fb.tips || []).forEach(t => {
+            const li = document.createElement('li');
+            li.textContent = t;
+            ul.appendChild(li);
+        });
+        $('fbSec').style.display = '';
+    }
+    async function fetchFeedbackAuto(){
+        // 스프링: POST /api/workbooks/runs/{runId}/feedback 가정
+        const fb = await req(`/api/workbooks/runs/${state.runId}/feedback`, 'POST', {});
+        renderFeedback(fb);
+    }
+
+    // ---- 버튼 핸들러 ----
+    $('btnClear').onclick = () => { $('log').innerText = ''; };
+
+    $('btnCreate').onclick = async () => {
         try {
-            setText(resBox, `<span class="spinner"></span> 채점 중…`);
-            const r = await postJson("/api/workbook/submit", payload, e.target);
-            setText(resBox, r.feedback ?? "제출 완료");
+            const body = {
+                topic: $('topic').value,
+                user: { child_age: Number($('childAge').value) || 4 },
+                userId: $('userId').value
+            };
+            const data = await req('/api/workbooks', 'POST', body);
+            setState({ workbookId: data.id, runId: null, step: 'CREATED' });
 
-            // nextStepIndex를 그대로 라우팅
-            switch (r.nextStepIndex) {
-                case WRITING_STEP:  show("page-writing"); break;
-                case SIM_STEP:      show("page-sim");     break;  // 설계상 바로 시뮬이면 허용
-                case MCQ_STEP:      show("page-mcq");     break;  // 재시도
-                default:
-                    if (r?.isLastStep) alert("모든 단계 완료");
-                    else show("page-writing"); // 안전 기본값
+            // 화면 초기화
+            show('mcqSec', false); show('writingSec', false); show('simSec', false); show('fbSec', false);
+            $('chat').innerHTML = '';
+            $('parentReply').value = '';
+            disable('parentReply', false);
+            disable('btnSimNext', false);
+        } catch (e) { alert(e.message); }
+    };
+
+    $('btnStart').onclick = async () => {
+        try {
+            if (!state.workbookId) return alert('먼저 워크북을 생성하세요.');
+            const data = await req(`/api/workbooks/${state.workbookId}/run/start`, 'POST', {});
+            setState({ runId: data.runId, step: 'MCQ' });
+            renderMcq(data.mcq);  // ★ 보기 표시
+        } catch (e) { alert(e.message); }
+    };
+
+    $('btnSubmitWriting').onclick = async () => {
+        try {
+            if (!state.runId) return alert('먼저 런을 시작하세요.');
+            const body = { text: $('writingText').value };
+            const data = await req(`/api/workbooks/runs/${state.runId}/answer/writing`, 'POST', body);
+            // data: { type: "SIMULATION", situation, ai_first_line }
+            renderSimStart(data);
+            setState({ step: 'SIM1' });
+        } catch (e) { alert(e.message); }
+    };
+
+    $('btnSimNext').onclick = async () => {
+        try {
+            if (!state.runId) return alert('먼저 런을 시작하세요.');
+            const pr = $('parentReply').value;
+            if (!pr.trim()) return alert('부모 발화를 입력하세요.');
+
+            // Spring→Python: history에 미리 추가하지 않음 (중복 카운트 방지)
+            const data = await req(`/api/workbooks/runs/${state.runId}/sim/next`, 'POST', { parentReply: pr });
+
+            // 화면엔 내가 친 걸 먼저 보여주고,
+            appendBubble('user', pr);
+            $('parentReply').value = '';
+
+            // AI 리턴이 있으면 표시
+            if (data.aiLine) appendBubble('ai', data.aiLine);
+
+            if (data.finished) {
+                // 종료시 입력 막고 자동 피드백
+                disable('parentReply', true);
+                disable('btnSimNext', true);
+                setState({ step: 'FEEDBACK' });
+                try {
+                    await fetchFeedbackAuto();
+                } catch (e) {
+                    log('ERROR feedback', { message: e.message }, 'ERR');
+                    alert('피드백 호출에 실패했습니다.');
+                }
+            } else {
+                setState({ step: state.step === 'SIM1' ? 'SIM2' : 'SIM1' });
             }
-        } catch (err) {
-            console.error(err);
-            setText(resBox, `<span class="hint-error">제출 실패: ${err.message}</span>`);
-        }
-    });
-
-    // ---- WRITING submit (2 → 3로 이동)
-    document.getElementById("btn-writing").addEventListener("click", async (e) => {
-        const answer = document.getElementById("writingAnswer").value.trim();
-        if (!answer) { alert("답변을 입력하세요"); return; }
-
-        const resBox = document.getElementById("writingResult");
-        try {
-            setText(resBox, `<span class="spinner"></span> 전송 중…`);
-            const r = await postJson("/api/workbook/submit", { stepIndex: WRITING_STEP, userAnswer: answer }, e.target);
-            setText(resBox, r.feedback ?? "제출 완료");
-
-            switch (r.nextStepIndex) {
-                case SIM_STEP:      show("page-sim");     break;
-                case WRITING_STEP:  show("page-writing"); break; // 재시도
-                case MCQ_STEP:      show("page-mcq");     break; // 설계상 뒤로 이동한다면
-                default:
-                    if (r?.isLastStep) alert("모든 단계 완료");
-                    else show("page-sim"); // 기본은 3단계로
-            }
-        } catch (err) {
-            console.error(err);
-            setText(resBox, `<span class="hint-error">제출 실패: ${err.message}</span>`);
-        }
-    });
-
-    // ---- SIM start
-    document.getElementById("btn-simstart").addEventListener("click", async (e) => {
-        document.getElementById("chat").innerHTML = "";
-        const hint = document.getElementById("simHint");
-        hint.textContent = "";
-        simFinished = false;
-
-        try {
-            const r = await postJson("/api/workbook/sim/start", { stepIndex: SIM_STEP }, e.target);
-            sessionId = r.sessionId;
-            if (!sessionId) throw new Error("세션 ID 없음");
-            if (r.aiLine) addMsg("ai", r.aiLine);
-            document.getElementById("simInput").classList.remove("hidden");
-            e.target.disabled = true; // 시작버튼 비활성
-            document.getElementById("userReply").focus();
-            hint.textContent = "시뮬레이션이 시작되었습니다.";
-            hint.className = "muted hint-ok";
-        } catch (err) {
-            console.error(err);
-            const msg = "시작 실패: " + err.message;
-            document.getElementById("simHint").textContent = msg;
-            document.getElementById("simHint").className = "muted hint-error";
-        }
-    });
-
-    // ---- SIM next
-    document.getElementById("btn-simnext").addEventListener("click", async (e) => {
-        if (!sessionId) { alert("먼저 시뮬레이션을 시작하세요"); return; }
-        if (simFinished) { return; }
-
-        const input = document.getElementById("userReply");
-        const text = input.value.trim();
-        if (!text) { input.focus(); return; }
-
-        addMsg("user", text);
-        input.value = "";
-
-        try {
-            const r = await postJson("/api/workbook/sim/next", { sessionId, userReply:text }, e.target);
-            if (r.aiLine) addMsg("ai", r.aiLine);
-            if (r.finished) {
-                simFinished = true;
-                document.getElementById("simInput").classList.add("hidden");
-                if (r.finalFeedback) addFinal(r.finalFeedback);
-                const hint = document.getElementById("simHint");
-                hint.textContent = "시뮬레이션이 종료되었습니다.";
-                hint.className = "muted hint-ok";
-            }
-        } catch (err) {
-            console.error(err);
-            const hint = document.getElementById("simHint");
-            hint.textContent = "전송 실패: " + err.message;
-            hint.className = "muted hint-error";
-        }
-    });
+        } catch (e) { alert(e.message); }
+    };
 </script>
 </body>
 </html>

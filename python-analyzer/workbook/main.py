@@ -1,4 +1,3 @@
-# workbook/main.py
 from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +9,7 @@ from workbook.sequence_api import (
     sequence_next_writing,
     sim_start,
     sim_next,
+    create_workbook,
     router as sequence_router,
 )
 from workbook.simulation_feedback import feedback, router as feedback_router
@@ -22,10 +22,10 @@ from workbook.models import (
     SimStartIn, SimStartOut,
     SimNextIn, SimNextOut,
     FeedbackIn, FeedbackOut,
-    Turn, SequenceToken,
-    # Facade/Pipeline DTOs
+    Turn,
     PipelineIn, PipelineOut,
     SimulateStartSimIn, SimulateNextWritingIn, SimulateNextTurnIn,
+    CreateWorkbookIn,
 )
 
 # [개발용] TRACE
@@ -45,10 +45,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 원본 라우터 노출
+# 라우터 노출
 app.include_router(sequence_router)
 app.include_router(feedback_router)
-app.include_router(sequence_router)
 
 # Health
 @app.get("/ping")
@@ -107,31 +106,32 @@ def simulate_feedback(req: FeedbackIn):
     except Exception as e:
         raise HTTPException(500, f"simulate_feedback failed: {e}")
 
-# WORKBOOK
 @app.post("/simulate/pipeline", response_model=PipelineOut)
 def workbook_pipeline(req: PipelineIn):
     try:
-        # 1) MCQ
-        mcq_out = sequence_start(SequenceStartIn(topic=req.topic, user=req.user))
+        # 1) 워크북 생성
+        create_out = create_workbook(CreateWorkbookIn(topic=req.topic, user=req.user))
+
+        # 2) MCQ 시작
+        mcq_out = sequence_start(SequenceStartIn(activity=create_out))
         token = mcq_out.token
         mcq_payload = mcq_out.mcq
 
         selected = req.mcq_selected or mcq_payload.get("optimal_option")
         writing_out = sequence_next_writing(SequenceNextWritingIn(token=token, selected_option=selected))
 
-        # 2) Writing
+        # 3) Writing
         writing_payload = writing_out.writing
         writing_answer = req.writing_answer or writing_payload.get("example_answer") or "예시 답변"
 
         sim_start_out = sim_start(SimStartIn(token=token, writing_answer=writing_answer))
 
-        # 3-1) Simulation start
+        # 4) Simulation start
         situation = sim_start_out.situation
         ai_first = sim_start_out.ai_first_line
         sim_hist: List[Turn] = [Turn(role="ai", text=ai_first)]
         finished = False
 
-        # 3-2) Simulation next turns
         for pr in (req.parent_replies or [])[:2]:
             nxt = sim_next(SimNextIn(topic=req.topic, situation=situation, history=sim_hist, parent_reply=pr))
             sim_hist.append(Turn(role="user", text=pr))
@@ -141,7 +141,7 @@ def workbook_pipeline(req: PipelineIn):
             if nxt.ai_line:
                 sim_hist.append(Turn(role="ai", text=nxt.ai_line))
 
-        # 4) Feedback
+        # 5) Feedback
         fb = feedback(
             FeedbackIn(
                 topic=req.topic,

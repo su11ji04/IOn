@@ -1,4 +1,3 @@
-# workbook/models.py
 from pydantic import BaseModel, Field, constr
 from typing import Optional, List, Literal, Dict, Any, Union
 
@@ -31,7 +30,6 @@ class ActivityItem(BaseModel):
     example_answer: Optional[str] = None
     # SIM
     situation: Optional[str] = None
-    # simulation 아이 대사
     ai_first_line: Optional[str] = None
 
 class WorkbookActivity(BaseModel):
@@ -45,9 +43,17 @@ class SequenceToken(BaseModel):
     id: str
     payload: Dict[str, Any] = Field(default_factory=dict)
 
-class SequenceStartIn(BaseModel):
+class CreateWorkbookIn(BaseModel):
     topic: constr(strip_whitespace=True, min_length=1)
     user: UserInput
+
+class CreateWorkbookOut(WorkbookActivity):
+    pass
+
+class SequenceStartIn(BaseModel):
+    activity: Optional[WorkbookActivity] = None
+    topic: Optional[constr(strip_whitespace=True, min_length=1)] = None
+    user: Optional[UserInput] = None
 
 class McqOut(BaseModel):
     token: SequenceToken

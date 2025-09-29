@@ -2,7 +2,7 @@ package capstone.config;
 
 import capstone.chatbot.config.ChatbotPythonProperties;
 import capstone.support.userprofile.UserProfileProperties;
-import capstone.workbook.config.WorkbookPythonProperties;   // ✅ 추가
+import capstone.workbook.config.WorkbookPythonProperties;
 import io.netty.channel.ChannelOption;
 import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.handler.timeout.WriteTimeoutHandler;
@@ -49,7 +49,7 @@ public class WebClientConfig {
 
     @Bean(name = "chatbotWebClient")
     public WebClient chatbotWebClient() {
-        String base = props.getBaseUrl(); // application.yml 의 chatbot.python.base-url
+        String base = props.getBaseUrl();
         log.info("[CHATBOT] Using baseUrl={}", base);
         if (base == null || !(base.startsWith("http://") || base.startsWith("https://"))) {
             throw new IllegalArgumentException("chatbot.python.base-url must start with http:// or https:// : " + base);
@@ -75,20 +75,18 @@ public class WebClientConfig {
 
     @Bean(name = "workbookWebClient")
     public WebClient workbookWebClient() {
-        String base = workbookProps.getBaseUrl();
-        log.info("[WORKBOOK] Using baseUrl={}", base);
-
-        HttpClient http = HttpClient.create()
-                .wiretap("reactor.netty.http.client",
-                        io.netty.handler.logging.LogLevel.DEBUG,
-                        reactor.netty.transport.logging.AdvancedByteBufFormat.TEXTUAL) // ★ 추가
-                .responseTimeout(Duration.ofMillis(workbookProps.getReadTimeoutMs()));
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10_000)
+                .doOnConnected(conn ->
+                        conn.addHandlerLast(new ReadTimeoutHandler(workbookProps.getReadTimeoutMs(), TimeUnit.MILLISECONDS)));
 
         return WebClient.builder()
-                .baseUrl(base)
-                .clientConnector(new ReactorClientHttpConnector(http))
+                .baseUrl(workbookProps.getBaseUrl())
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .defaultHeaders(h -> h.setContentType(MediaType.APPLICATION_JSON))
-                .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                        .build())
                 .build();
     }
 }
