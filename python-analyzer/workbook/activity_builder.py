@@ -101,6 +101,17 @@ def generate_prompt(text_chunk: str, topic: str, user: dict) -> str:
 - 아이 나이({child_age}), 성향({child_traits}), 부모 스타일({parenting_style}), 목표({parenting_goal}), 건강이슈({health_issues}), 선호 톤({preferred_tone}) 반영
 - 주제: {topic}
 - 참고 텍스트 일부(발췌):
+- ai_first_line은 상황에 맞는 아이의 대사를 출력한다
+
+추가 제약:
+- "SIMULATION.situation"은 MCQ/WRITING 맥락과 일관되게 작성(주제와 동일 도메인).
+- "SIMULATION.ai_first_line"은 반드시 아이의 말로, 한 문장, 짧고 자연스러운 구어체, 감탄사/부정/요구 표현 가능.
+  - 예시: "싫어! 지금 그거 사줘!", "안 먹을래!", "내 거야!"
+  - 금지: 어른/코치 톤(예: "조금만 먹어보자", "우리 몸에 좋아", "약속 지키자", "그치만/하지만" 등 훈육 문장)
+  - 높임말/설명체/조언체/복문 금지.
+- "MCQ.options"는 4개 정확히, "optimal_option"은 options 중 하나의 값과 정확히 동일한 문자열.
+- WRITING은 실제 부모가 쓸 법한 한 단락 예시 답을 간결하게.
+- 출력은 JSON 한 개만. 그 외 어떤 텍스트도 출력하지 말 것.
 \"\"\"{text_chunk[:1500]}\"\"\""""
 
 # WORKBOOK 생성
