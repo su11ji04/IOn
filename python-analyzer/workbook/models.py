@@ -31,9 +31,7 @@ class ActivityItem(BaseModel):
     example_answer: Optional[str] = None
     # SIM
     situation: Optional[str] = None
-    # 과거 호환 키(일부 코드에서 사용 가능)
-    ai_optimal_response: Optional[str] = None
-    # 현재 사용 키 (sequence_api는 이 키를 사용)
+    # simulation 아이 대사
     ai_first_line: Optional[str] = None
 
 class WorkbookActivity(BaseModel):
@@ -79,7 +77,7 @@ class SimStartOut(BaseModel):
 class SimNextIn(BaseModel):
     topic: str
     situation: str
-    history: List[Turn] = Field(default_factory=list)  # ✅
+    history: List[Turn] = Field(default_factory=list)
     parent_reply: str
 
 class SimNextOut(BaseModel):
@@ -105,13 +103,13 @@ class SimTurn(BaseModel):
 
 class FeedbackIn(BaseModel):
     topic: str
-    mcq: List[McqItem] = Field(default_factory=list)       # ✅
-    writing: List[WritingItem] = Field(default_factory=list)  # ✅
-    sim_history: List[SimTurn] = Field(default_factory=list)  # ✅
+    mcq: List[McqItem] = Field(default_factory=list)
+    writing: List[WritingItem] = Field(default_factory=list)
+    sim_history: List[SimTurn] = Field(default_factory=list)
 
 class FeedbackOut(BaseModel):
     overall_comment: str
-    tips: List[str] = Field(default_factory=list)  # ✅
+    tips: List[str] = Field(default_factory=list)
 
 # ---- Facade/Pipeline DTOs ----
 class PipelineIn(BaseModel):
@@ -119,7 +117,7 @@ class PipelineIn(BaseModel):
     user: UserInput
     mcq_selected: Optional[str] = None
     writing_answer: Optional[str] = None
-    parent_replies: List[str] = Field(default_factory=list)  # ✅
+    parent_replies: List[str] = Field(default_factory=list)
 
 class PipelineOut(BaseModel):
     token: SequenceToken
@@ -140,5 +138,5 @@ class SimulateNextWritingIn(BaseModel):
 class SimulateNextTurnIn(BaseModel):
     topic: str
     situation: str
-    history: List[Turn] = Field(default_factory=list)  # ✅
+    history: List[Turn] = Field(default_factory=list)
     parent_reply: constr(strip_whitespace=True, min_length=1)

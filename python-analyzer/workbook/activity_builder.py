@@ -20,7 +20,7 @@ LAST_TRACE = {
 def _client():
     return OpenAI(api_key=load_openai_api_key())
 
-# FALLBACK DEMO ACTIVITY  (키명 ai_first_line 으로 통일)
+# FALLBACK DEMO ACTIVITY
 def _demo_activity() -> Dict[str, Any]:
     return {
         "activity_title": "데모 활동",
@@ -45,6 +45,7 @@ def _demo_activity() -> Dict[str, Any]:
         ],
     }
 
+# JSON -> DICT
 def _extract_json(text: str):
     if text is None:
         raise ValueError("Empty response")
@@ -58,6 +59,7 @@ def _extract_json(text: str):
         raise ValueError("No JSON object found in response")
     return json.loads(m.group(0))
 
+# PROMPT
 def generate_prompt(text_chunk: str, topic: str, user: dict) -> str:
     child_age = user.get("child_age")
     parenting_style = user.get("parenting_style")
@@ -101,6 +103,7 @@ def generate_prompt(text_chunk: str, topic: str, user: dict) -> str:
 - 참고 텍스트 일부(발췌):
 \"\"\"{text_chunk[:1500]}\"\"\""""
 
+# WORKBOOK 생성
 def _build_one_activity(topic: str, user: Any, max_chunks: int = 1) -> Dict[str, Any]:
     if not isinstance(user, dict):
         try:

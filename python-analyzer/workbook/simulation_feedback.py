@@ -11,8 +11,7 @@ router = APIRouter(prefix="/workbook", tags=["feedback"])
 def _client():
     return OpenAI(api_key=load_openai_api_key())
 
-@router.post("/feedback", response_model=FeedbackOut)
-def feedback(req: FeedbackIn):
+def run_feedback_core(req: FeedbackIn) -> FeedbackOut:
     try:
         prompt_dict: Dict[str, Any] = {
             "topic": req.topic,
@@ -44,6 +43,13 @@ def feedback(req: FeedbackIn):
             overall_comment=(data.get("overall_comment") or "").strip(),
             tips=data.get("tips") or [],
         )
+    except Exception as e:
+        raise e
+
+@router.post("/feedback", response_model=FeedbackOut)
+def feedback(req: FeedbackIn):
+    try:
+        return run_feedback_core(req)
     except Exception as e:
         raise HTTPException(500, f"feedback failed: {e}")
 

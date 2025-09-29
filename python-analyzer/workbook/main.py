@@ -1,10 +1,10 @@
 # workbook/main.py
-from typing import List, Optional
-from pydantic import BaseModel, constr
+from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from workbook.simulation_feedback import run_feedback_core
 
-# 라우터(원본 API 노출)
+# ROUTER
 from workbook.sequence_api import (
     sequence_start,
     sequence_next_writing,
@@ -14,7 +14,7 @@ from workbook.sequence_api import (
 )
 from workbook.simulation_feedback import feedback, router as feedback_router
 
-# DTO들
+# DTO
 from workbook.models import (
     UserInput,
     SequenceStartIn, McqOut,
@@ -28,7 +28,7 @@ from workbook.models import (
     SimulateStartSimIn, SimulateNextWritingIn, SimulateNextTurnIn,
 )
 
-# [개발용] 트레이스
+# [개발용] TRACE
 try:
     from workbook.activity_builder import LAST_TRACE
 except Exception:
@@ -48,6 +48,7 @@ app.add_middleware(
 # 원본 라우터 노출
 app.include_router(sequence_router)
 app.include_router(feedback_router)
+app.include_router(sequence_router)
 
 # Health
 @app.get("/ping")
@@ -63,7 +64,6 @@ def list_routes():
 def sim_trace():
     return LAST_TRACE
 
-# ---------- Facade ----------
 @app.post("/simulate/start", response_model=McqOut)
 def simulate_start(req: SequenceStartIn):
     try:
@@ -103,15 +103,13 @@ def simulate_sim_next(req: SimulateNextTurnIn):
 @app.post("/simulate/feedback", response_model=FeedbackOut)
 def simulate_feedback(req: FeedbackIn):
     try:
-        return feedback(req)
-    except HTTPException:
-        raise
+        return run_feedback_core(req)
     except Exception as e:
         raise HTTPException(500, f"simulate_feedback failed: {e}")
 
-# ---------- Pipeline (원샷) ----------
+# WORKBOOK
 @app.post("/simulate/pipeline", response_model=PipelineOut)
-def simulate_pipeline(req: PipelineIn):
+def workbook_pipeline(req: PipelineIn):
     try:
         # 1) MCQ
         mcq_out = sequence_start(SequenceStartIn(topic=req.topic, user=req.user))
@@ -127,13 +125,13 @@ def simulate_pipeline(req: PipelineIn):
 
         sim_start_out = sim_start(SimStartIn(token=token, writing_answer=writing_answer))
 
-        # 3) Simulation start
+        # 3-1) Simulation start
         situation = sim_start_out.situation
         ai_first = sim_start_out.ai_first_line
         sim_hist: List[Turn] = [Turn(role="ai", text=ai_first)]
         finished = False
 
-        # 4) Simulation next turns (최대 2회)
+        # 3-2) Simulation next turns
         for pr in (req.parent_replies or [])[:2]:
             nxt = sim_next(SimNextIn(topic=req.topic, situation=situation, history=sim_hist, parent_reply=pr))
             sim_hist.append(Turn(role="user", text=pr))
@@ -143,7 +141,7 @@ def simulate_pipeline(req: PipelineIn):
             if nxt.ai_line:
                 sim_hist.append(Turn(role="ai", text=nxt.ai_line))
 
-        # 5) Feedback
+        # 4) Feedback
         fb = feedback(
             FeedbackIn(
                 topic=req.topic,

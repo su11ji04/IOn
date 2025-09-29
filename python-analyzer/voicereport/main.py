@@ -67,7 +67,7 @@ class AnalysisReportDto(BaseModel):
 # 화자 분리 SKIP (FOR. 속도 향상)
 SKIP_DIARIZATION = os.getenv("SKIP_DIARIZATION", "0") == "1"
 
-app = FastAPI(title="Voice Analyzer (JSON)", version="1.2.0")
+app = FastAPI(title="Voicereport", version="1.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_credentials=True,
