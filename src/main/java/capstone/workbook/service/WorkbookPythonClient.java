@@ -1,12 +1,12 @@
+// src/main/java/capstone/workbook/service/WorkbookPythonClient.java
 package capstone.workbook.service;
 
-import capstone.workbook.dto.SimNextResponse;
-import capstone.workbook.dto.WorkbookFeedbackResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.util.Map;
 
@@ -14,45 +14,53 @@ import java.util.Map;
 @Component
 public class WorkbookPythonClient {
 
-    private final WebClient webClient;
+    private final WebClient workbookWebClient;
 
-    public WorkbookPythonClient(@Qualifier("workbookWebClient") WebClient webClient) {
-        this.webClient = webClient;
+    public WorkbookPythonClient(@Qualifier("workbookWebClient") WebClient workbookWebClient) {
+        this.workbookWebClient = workbookWebClient;
     }
 
-    /** 기존: 워크북 시뮬레이션(액티비티) 생성 */
-    public WorkbookSimulateResponse simulate(WorkbookSimulateRequest req) {
-        log.info("[WORKBOOK] simulate topic={}, userId={}", req.getTopic(), req.getUserId());
-        return webClient.post()
-                .uri("/workbook/simulate")
+    public Mono<Map<String, Object>> createActivity(Map<String, Object> body) {
+        return workbookWebClient.post()
+                .uri("/workbook/sequence/create")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(req)
+                .bodyValue(body)
                 .retrieve()
-                .bodyToMono(WorkbookSimulateResponse.class)
-                .block();
+                .bodyToMono(GenericMap.class)
+                .map(GenericMap::get);
     }
 
-    /** 시뮬레이션 다음 턴 (부모 발화 → 아이 반응) */
-    public SimNextResponse simNext(Map<String, Object> payload) {
-        log.info("[WORKBOOK] simNext payload keys={}", payload.keySet());
-        return webClient.post()
-                .uri("/workbook/sim/next")
+    public Mono<Map<String, Object>> sequenceStart(Map<String, Object> body) {
+        return workbookWebClient.post()
+                .uri("/workbook/sequence/start")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(payload)
+                .bodyValue(body)
                 .retrieve()
-                .bodyToMono(SimNextResponse.class)
-                .block();
+                .bodyToMono(GenericMap.class)
+                .map(GenericMap::get);
     }
 
-    /** ✅ 최종 종합 피드백 생성 (FastAPI /workbook/feedback) */
-    public WorkbookFeedbackResponse finalFeedback(Map<String, Object> payload) {
-        log.info("[WORKBOOK] finalFeedback payload keys={}", payload.keySet());
-        return webClient.post()
+    static class GenericMap extends java.util.HashMap<String, Object> {
+        Map<String, Object> get() { return this; }
+    }
+
+    public Mono<Map<String, Object>> simNext(Map<String, Object> body) {
+        return workbookWebClient.post()
+                .uri("/workbook/sequence/sim/next")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(GenericMap.class)
+                .map(GenericMap::get);
+    }
+
+    public Mono<Map<String, Object>> feedback(Map<String, Object> body) {
+        return workbookWebClient.post()
                 .uri("/workbook/feedback")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(payload)
+                .bodyValue(body)
                 .retrieve()
-                .bodyToMono(WorkbookFeedbackResponse.class)
-                .block();
+                .bodyToMono(GenericMap.class)
+                .map(GenericMap::get);
     }
 }

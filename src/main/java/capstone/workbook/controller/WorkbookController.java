@@ -1,42 +1,45 @@
 package capstone.workbook.controller;
 
-import capstone.workbook.dto.*;
+import capstone.workbook.dto.CreateWorkbookRequest;
+import capstone.workbook.dto.ListResponse;
+import capstone.workbook.dto.RunDtos;
+import capstone.workbook.dto.WorkbookDetailResponse;
 import capstone.workbook.service.WorkbookService;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.util.Map;
+
+@CrossOrigin(origins = "*") //개발용
 @RestController
-@RequestMapping("/api/workbook")
+@RequestMapping("/api/workbooks")
 @RequiredArgsConstructor
 public class WorkbookController {
 
-    private final WorkbookService workbookService;
+    private final WorkbookService service;
 
-    // 선택형/작성형 제출
-    @PostMapping(value = "/submit", consumes = MediaType.APPLICATION_JSON_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE)
-    public WorkbookSubmitResponse submit(@RequestBody @Valid WorkbookSubmitRequest req) {
-        req.setUserId("u001");
-        req.setWorkbookId(1L);
-        return workbookService.submit(req);
+    // 워크북 생성 + 저장
+    @PostMapping
+    public Map<String, Object> create(@RequestBody CreateWorkbookRequest req) {
+        Long id = service.createAndSave(req);
+        return Map.of("id", id);
     }
 
-    // 시뮬레이션 시작
-    @PostMapping(value = "/sim/start", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public SimStartResponse startSim(@RequestBody @Valid SimStartRequest req) {
-        req.setUserId("u001");
-        req.setWorkbookId(1L);
-        return workbookService.startSimulation(req);
+    // 워크북 목록 조회
+    @GetMapping
+    public ListResponse list(
+            @RequestParam(name = "userId", required = false) String userId,
+            Pageable pageable
+    ) {
+        return service.listSimple(userId, pageable);
     }
 
-    // 시뮬레이션 다음 턴
-    @PostMapping(value = "/sim/next", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public SimNextResponse nextSim(@RequestBody @Valid SimNextRequest req) {
-        return workbookService.nextTurn(req);
+    // [개발용]
+    @GetMapping("/{id}")
+    public WorkbookDetailResponse get(@PathVariable("id") Long id) throws IOException {
+        return service.getOne(id);
     }
+
 }

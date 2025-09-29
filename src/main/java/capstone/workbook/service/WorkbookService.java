@@ -1,647 +1,281 @@
 package capstone.workbook.service;
 
-import capstone.workbook.dto.*;
-import capstone.workbook.entity.SimulationSession;
+import capstone.workbook.dto.CreateWorkbookRequest;
+import capstone.workbook.dto.ListItemDto;
+import capstone.workbook.dto.ListResponse;
+import capstone.workbook.dto.WorkbookDetailResponse;
+import capstone.workbook.dto.RunDtos.StartResponse;
 import capstone.workbook.entity.Workbook;
-import capstone.workbook.entity.WorkbookStepAnswer;
-import capstone.workbook.repository.SimulationSessionRepository;
+import capstone.workbook.entity.WorkbookRun;
 import capstone.workbook.repository.WorkbookRepository;
-import capstone.workbook.repository.WorkbookStepAnswerRepository;
-import com.fasterxml.jackson.core.type.TypeReference;
+import capstone.workbook.repository.WorkbookRunRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
-import java.util.*;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
-/**
- * WorkbookService - 최종본
- */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class WorkbookService {
 
-    // UserProfileLoader (Optional 반환 가정)
-    private final capstone.support.userprofile.UserProfileLoader userProfileLoader;
+    private final WorkbookPythonClient py;
+    private final WorkbookRepository wbRepo;
+    private final WorkbookRunRepository runRepo;
+    private final ObjectMapper om;
 
-    private final WorkbookPythonClient pythonClient;
-    private final WorkbookRepository workbookRepo;
-    private final SimulationSessionRepository sessionRepo;
-    private final WorkbookStepAnswerRepository stepAnswerRepo;
-    private final ObjectMapper objectMapper;
-
-    /** 파이썬으로 액티비티 생성 후 저장(옵션) */
-    public WorkbookSimulateResponse simulateAndSave(WorkbookSimulateRequest req, boolean save) {
-        WorkbookSimulateResponse res = pythonClient.simulate(req);
-        if (save) {
-            try {
-                int cnt = (res.getActivities() == null) ? 0 : res.getActivities().size();
-                String json = objectMapper.writeValueAsString(res);
-
-                Workbook entity = Workbook.builder()
-                        .userId(req.getUserId())
-                        .topic(req.getTopic())
-                        .activityCount(cnt)
-                        .rawJson(json)
-                        .createdAt(LocalDateTime.now())
-                        .build();
-                workbookRepo.save(entity);
-            } catch (Exception e) {
-                log.error("simulateAndSave save error", e);
-            }
-        }
-        return res;
+    public WorkbookService(WorkbookPythonClient py,
+                           WorkbookRepository wbRepo,
+                           WorkbookRunRepository runRepo,
+                           ObjectMapper om) {
+        this.py = py;
+        this.wbRepo = wbRepo;
+        this.runRepo = runRepo;
+        this.om = om;
     }
 
-    // =========================
-    // 컨트롤러에서 호출하는 3개 메서드
-    // =========================
+    // 워크북 생성 + 저장
+    public Long createAndSave(CreateWorkbookRequest req) {
+        final String fixedUserId = "u001"; // [개발용] USER ID
+        final String fixedTopic  = "떼쓰는 아이"; // [개발용] USER ID
+        log.info("[WORKBOOK SERVICE] using fixed userId={}, topic={}", fixedUserId, fixedTopic);
 
-    /** ① 선택형/작성형 제출 */
-    @Transactional
-    public WorkbookSubmitResponse submit(WorkbookSubmitRequest req) {
-        final String userId = (req.getUserId() == null) ? "u001" : req.getUserId();
-        final Long preferredId = (req.getWorkbookId() == null) ? null : req.getWorkbookId();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> user = req.getUser() == null
+                ? new java.util.HashMap<>()
+                : new java.util.HashMap<>(req.getUser());
+        user.put("user_id", fixedUserId);
 
-        Workbook wb = getOrCreateDefaultWorkbook(userId, preferredId);
-        if (wb.getRawJson() == null || wb.getRawJson().isBlank()) {
-            throw new IllegalStateException("Workbook rawJson is empty");
+        var pyReq = Map.of("topic", fixedTopic, "user", user);
+
+
+        // 워크북 생성
+        Map<String, Object> createOut = py.createActivity(pyReq).block();
+        if (createOut == null) {
+            throw new IllegalStateException("Python create returned null");
         }
 
-        final WorkbookSimulateResponse simRes;
+        // 워크북 내용 저장
+        Object activitiesObj = createOut.get("activities");
+        int activityCount = (activitiesObj instanceof List)
+                ? ((List<?>) activitiesObj).size()
+                : (activitiesObj == null ? 0 : 1);
+
+        Workbook wb = new Workbook();
+        wb.setUserId(fixedUserId);
+        wb.setTopic(fixedTopic);
+
         try {
-            simRes = objectMapper.readValue(wb.getRawJson(), WorkbookSimulateResponse.class);
-        } catch (Exception e) {
-            log.error("Failed to parse workbook.rawJson", e);
-            throw new IllegalStateException("Invalid workbook JSON");
+            wb.setActivityJson(om.writeValueAsString(createOut));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize activity json", e);
         }
-        if (simRes.getActivities() == null || simRes.getActivities().isEmpty()) {
-            throw new IllegalStateException("No activities in workbook");
-        }
+        wb.setActivityCount(activityCount);
+        wbRepo.save(wb);
 
-        final Integer stepIndex = req.getStepIndex();
-        if (stepIndex == null || stepIndex < 0 || stepIndex >= simRes.getActivities().size()) {
-            throw new IndexOutOfBoundsException("Invalid stepIndex: " + stepIndex);
-        }
-        final WorkbookActivity step = simRes.getActivities().get(stepIndex);
+        return wb.getId();
+    }
 
-        // 현 스텝 저장 이력
-        List<WorkbookStepAnswer> submitted = stepAnswerRepo.findByWorkbookIdAndStepIndex(wb.getId(), stepIndex);
-        boolean mcqDone     = submitted.stream().anyMatch(a -> a.getStepType() == ActivityType.MCQ);
-        boolean writingDone = submitted.stream().anyMatch(a -> a.getStepType() == ActivityType.WRITING);
+    // 워크북 리스트 조회
+    public ListResponse listSimple(String userId, Pageable pageable) {
+        Page<Workbook> page = (userId == null || userId.isBlank())
+                ? wbRepo.findAll(pageable)
+                : wbRepo.findByUserIdOrderByCreatedAtDesc(userId, pageable);
 
-        boolean hasMCQ     = step.getActivities().stream().anyMatch(a -> a.getType() == ActivityType.MCQ);
-        boolean hasWriting = step.getActivities().stream().anyMatch(a -> a.getType() == ActivityType.WRITING);
-        boolean hasSim     = step.getActivities().stream().anyMatch(a -> a.getType() == ActivityType.SIMULATION);
+        List<ListItemDto> items = page.getContent().stream()
+                .map(wb -> ListItemDto.builder()
+                        .id(wb.getId())
+                        .topic(wb.getTopic())
+                        .activityCount(wb.getActivityCount())
+                        .createdAt(wb.getCreatedAt())
+                        .build())
+                .toList();
 
-        // 이번 호출에서 처리해야 하는 대상 (MCQ → WRITING → SIMULATION)
-        ActivityType pending =
-                (hasMCQ && !mcqDone)        ? ActivityType.MCQ :
-                        (hasWriting && !writingDone) ? ActivityType.WRITING :
-                                (hasSim)                     ? ActivityType.SIMULATION : null;
-
-        Boolean correct = null;
-        String  feedback;
-        ActivityType handledType = null;
-
-        // 유틸: “비어있음” 판정 강화
-        java.util.function.Predicate<String> isBlankStrong = s -> {
-            String t = nullToEmpty(s).trim().toLowerCase();
-            return t.isEmpty() || "null".equals(t) || "undefined".equals(t);
-        };
-
-        if (pending == ActivityType.MCQ) {
-            if (mcqDone) {
-                return WorkbookSubmitResponse.builder()
-                        .stepIndex(stepIndex).nextStepIndex(stepIndex)
-                        .isLastStep(stepIndex.equals(simRes.getActivities().size() - 1))
-                        .handledType(null).correct(null)
-                        .feedback("이미 선택형을 제출했습니다.")
-                        .ok(true).nextExpectedType(hasWriting ? ActivityType.WRITING : (hasSim ? ActivityType.SIMULATION : null))
-                        .shouldStartSimulation(false)
-                        .build();
-            }
-
-            ActivityItem mcq = step.getActivities().stream()
-                    .filter(a -> a.getType() == ActivityType.MCQ)
-                    .findFirst().orElseThrow();
-
-            String userAnswer = nullToEmpty(req.getUserAnswer()).trim();
-
-            // 옵션 유효성 체크
-            List<String> options = mcq.getOptions() == null ? Collections.emptyList() : mcq.getOptions();
-            boolean optionsPresent = !options.isEmpty();
-            boolean invalidByOptions = optionsPresent && options.stream().noneMatch(op -> op.equalsIgnoreCase(userAnswer));
-
-            if (isBlankStrong.test(userAnswer) || invalidByOptions) {
-                return WorkbookSubmitResponse.builder()
-                        .stepIndex(stepIndex).nextStepIndex(stepIndex)
-                        .isLastStep(stepIndex.equals(simRes.getActivities().size() - 1))
-                        .handledType(null).correct(null)
-                        .feedback(optionsPresent
-                                ? "선택형에서 보기 중 하나를 선택해 주세요."
-                                : "선택형 답을 먼저 선택해 주세요.")
-                        .ok(true).nextExpectedType(ActivityType.MCQ)
-                        .shouldStartSimulation(false)
-                        .build();
-            }
-
-            handledType = ActivityType.MCQ;
-
-            String userAnswerNorm    = normalizeAnswer(userAnswer);
-            String optimalAnswerNorm = normalizeAnswer(mcq.getOptimal_option());
-
-            if (!optimalAnswerNorm.isEmpty()) {
-                correct  = optimalAnswerNorm.equals(userAnswerNorm);
-                feedback = correct ? "정답입니다! ✅"
-                        : "오답입니다. 정답은 \"" + nullToEmpty(mcq.getOptimal_option()) + "\" 입니다.";
-            } else {
-                correct  = null;
-                feedback = "정답 기준이 없어 채점하지 않았어요.";
-            }
-
-            stepAnswerRepo.save(WorkbookStepAnswer.builder()
-                    .workbookId(wb.getId())
-                    .stepIndex(stepIndex)
-                    .stepType(ActivityType.MCQ)
-                    .answerText(userAnswer)
-                    .mcqCorrect(correct)
-                    .createdAt(LocalDateTime.now())
-                    .build());
-            mcqDone = true;
-
-        } else if (pending == ActivityType.WRITING) {
-            if (writingDone) {
-                return WorkbookSubmitResponse.builder()
-                        .stepIndex(stepIndex).nextStepIndex(stepIndex)
-                        .isLastStep(stepIndex.equals(simRes.getActivities().size() - 1))
-                        .handledType(null).correct(null)
-                        .feedback("이미 서술형을 제출했습니다.")
-                        .ok(true).nextExpectedType(hasSim ? ActivityType.SIMULATION : null)
-                        .shouldStartSimulation(false)
-                        .build();
-            }
-
-            String userAnswer = nullToEmpty(req.getUserAnswer()).trim();
-            if (isBlankStrong.test(userAnswer)) {
-                return WorkbookSubmitResponse.builder()
-                        .stepIndex(stepIndex).nextStepIndex(stepIndex)
-                        .isLastStep(stepIndex.equals(simRes.getActivities().size() - 1))
-                        .handledType(null).correct(null)
-                        .feedback("서술형 답변을 입력해 주세요.")
-                        .ok(true).nextExpectedType(ActivityType.WRITING)
-                        .shouldStartSimulation(false)
-                        .build();
-            }
-
-            handledType = ActivityType.WRITING;
-            ActivityItem writing = step.getActivities().stream()
-                    .filter(a -> a.getType() == ActivityType.WRITING)
-                    .findFirst().orElseThrow();
-
-            String example = nullToEmpty(writing.getExample_answer());
-            feedback = example.isBlank()
-                    ? "좋은 시도예요. 핵심 키워드를 한두 줄 더 보완해보세요."
-                    : "예시 답안 참고: " + example;
-
-            stepAnswerRepo.save(WorkbookStepAnswer.builder()
-                    .workbookId(wb.getId())
-                    .stepIndex(stepIndex)
-                    .stepType(ActivityType.WRITING)
-                    .answerText(userAnswer)
-                    .mcqCorrect(null)
-                    .createdAt(LocalDateTime.now())
-                    .build());
-            writingDone = true;
-
-        } else if (pending == ActivityType.SIMULATION) {
-            handledType = null;
-            feedback = "시뮬레이션을 시작하세요.";
-        } else {
-            handledType = null;
-            feedback = "이 스텝은 완료되었습니다.";
-        }
-
-        // 저장 이후 재판정
-        ActivityType nextPending =
-                (hasMCQ && !mcqDone)        ? ActivityType.MCQ :
-                        (hasWriting && !writingDone) ? ActivityType.WRITING :
-                                (hasSim)                     ? ActivityType.SIMULATION : null;
-
-        int lastIdx = simRes.getActivities().size() - 1;
-        boolean isLast = (stepIndex == lastIdx);
-
-        Integer nextStepIndex;
-        boolean shouldStartSimulation = false;
-        ActivityType nextExpectedType;
-
-        if (nextPending == ActivityType.MCQ || nextPending == ActivityType.WRITING) {
-            nextStepIndex = stepIndex;
-            nextExpectedType = nextPending;
-        } else if (nextPending == ActivityType.SIMULATION) {
-            nextStepIndex = stepIndex;
-            nextExpectedType = ActivityType.SIMULATION;
-            shouldStartSimulation = true; // 프런트는 이때만 /sim/start
-        } else {
-            nextStepIndex = isLast ? null : stepIndex + 1;
-            nextExpectedType = null;
-            if (isLast) {
-                String overall = generateOverallFeedback(wb);
-                if (overall != null) feedback = overall;
-            }
-        }
-
-        log.info("[WB-SUBMIT] userId={}, wbId={}, stepIndex={}, handledType={}, correct={}, next={}, nextExpected={}, startSim={}",
-                userId, wb.getId(), stepIndex, handledType, correct, nextStepIndex, nextExpectedType, shouldStartSimulation);
-
-        return WorkbookSubmitResponse.builder()
-                .stepIndex(stepIndex)
-                .nextStepIndex(nextStepIndex)
-                .isLastStep(isLast)
-                .handledType(handledType)
-                .correct(correct)
-                .feedback(feedback)
-                .ok(true)
-                .nextExpectedType(nextExpectedType)
-                .shouldStartSimulation(shouldStartSimulation)
+        return ListResponse.builder()
+                .userId((userId == null || userId.isBlank()) ? null : userId)
+                .page(pageable.getPageNumber())
+                .size(pageable.getPageSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .items(items)
                 .build();
     }
 
-    /** ② 시뮬레이션 시작 */
-    @Transactional
-    public SimStartResponse startSimulation(SimStartRequest req) {
-        final String userId = (req.getUserId() == null) ? "u001" : req.getUserId();
-        final Long preferredId = (req.getWorkbookId() == null) ? null : req.getWorkbookId();
+    // [개발용] 워크북 단건 조회
+    public WorkbookDetailResponse getOne(Long id) throws IOException {
+        Workbook wb = wbRepo.findById(id).orElseThrow();
+        @SuppressWarnings("unchecked")
+        Map<String,Object> activity = om.readValue(wb.getActivityJson(), Map.class);
 
-        // 1) 워크북 확보/파싱
-        Workbook wb = getOrCreateDefaultWorkbook(userId, preferredId);
-        if (wb.getRawJson() == null || wb.getRawJson().isBlank()) {
-            throw new IllegalStateException("Workbook rawJson is empty");
-        }
+        return WorkbookDetailResponse.builder()
+                .id(wb.getId())
+                .userId(wb.getUserId())
+                .topic(wb.getTopic())
+                .activityCount(wb.getActivityCount())
+                .createdAt(wb.getCreatedAt())
+                .activity(activity)
+                .build();
+    }
 
-        final WorkbookSimulateResponse simRes;
-        try {
-            simRes = objectMapper.readValue(wb.getRawJson(), WorkbookSimulateResponse.class);
-        } catch (Exception e) {
-            log.error("Failed to parse workbook.rawJson", e);
-            throw new IllegalStateException("Invalid workbook JSON");
-        }
-        if (simRes.getActivities() == null || simRes.getActivities().isEmpty()) {
-            throw new IllegalStateException("No activities in workbook JSON");
-        }
 
-        // 2) 시뮬레이션이 들어있는 스텝 인덱스 결정
-        Integer reqIdx = req.getStepIndex();
-        int stepIndex = resolveSimulationStepIndex(simRes, reqIdx);
-        WorkbookActivity step = simRes.getActivities().get(stepIndex);
+    // MCQ 질문
+    public StartResponse runStart(Long workbookId, String userId) throws Exception {
+        Workbook wb = wbRepo.findById(workbookId).orElseThrow();
+        Map activity = om.readValue(wb.getActivityJson(), Map.class);
+        Map<String,Object> mcq = pick(activity, "MCQ");
 
-        // 3) 서브-액티비티 현황 점검
-        boolean hasMCQ     = step.getActivities().stream().anyMatch(a -> a.getType() == ActivityType.MCQ);
-        boolean hasWriting = step.getActivities().stream().anyMatch(a -> a.getType() == ActivityType.WRITING);
-        boolean hasSim     = step.getActivities().stream().anyMatch(a -> a.getType() == ActivityType.SIMULATION);
-
-        if (!hasSim) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "This step has no SIMULATION item. stepIndex=" + stepIndex);
-        }
-
-        // 이미 저장된 답변 확인
-        List<WorkbookStepAnswer> submitted = stepAnswerRepo.findByWorkbookIdAndStepIndex(wb.getId(), stepIndex);
-        boolean mcqDone     = submitted.stream().anyMatch(a -> a.getStepType() == ActivityType.MCQ);
-        boolean writingDone = submitted.stream().anyMatch(a -> a.getStepType() == ActivityType.WRITING);
-
-        if (hasMCQ && !mcqDone) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "MCQ not completed yet for this step. Submit MCQ first.");
-        }
-        if (hasWriting && !writingDone) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "WRITING not completed yet for this step. Submit WRITING first.");
-        }
-
-        // 4) SIMULATION 아이템 추출
-        ActivityItem sim = step.getActivities().stream()
-                .filter(a -> a.getType() == ActivityType.SIMULATION)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("SIMULATION item not found at stepIndex=" + stepIndex));
-
-        // 5) 세션 생성 및 초기 히스토리
-        String sessionId = UUID.randomUUID().toString();
-
-        String situation = nullToEmpty(sim.getSituation());
-        if (situation.isBlank()) {
-            situation = "상황: 아이와 대화를 시작해 보세요.";
-        }
-
-        String aiLine = extractChildLine(sim.getAi_optimal_response());
-        if (aiLine == null || aiLine.isBlank()) {
-            aiLine = "응, 이야기해줘.";
-        }
-
-        List<Map<String, String>> history = new ArrayList<>();
-        history.add(Map.of("role", "ai", "text", aiLine));
-
-        SimulationSession session = SimulationSession.builder()
-                .sessionId(sessionId)
-                .workbookId(wb.getId())
-                .stepIndex(stepIndex)
+        WorkbookRun run = WorkbookRun.builder()
+                .workbookId(workbookId)
                 .userId(userId)
-                .historyJson(writeJson(history))
-                .finished(false)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
+                .step("MCQ")
                 .build();
+        runRepo.save(run);
 
-        sessionRepo.save(session);
-
-        return SimStartResponse.builder()
-                .sessionId(sessionId)
-                .situation(situation)
-                .aiLine(aiLine)
-                .build();
+        StartResponse out = new StartResponse();
+        out.setRunId(run.getId());
+        out.setMcq(mcq);
+        return out;
     }
 
-    /** ③ 시뮬레이션 다음 턴(부모 발화 → Python 호출 → 아이 반응) */
-    @Transactional
-    public SimNextResponse nextTurn(SimNextRequest req) {
-        SimulationSession session = sessionRepo.findBySessionId(req.getSessionId())
-                .orElseThrow(() -> new NoSuchElementException("Session not found: " + req.getSessionId()));
+    // MCQ 대답
+    public Map<String,Object> answerMcq(Long runId, String answer) throws Exception {
+        WorkbookRun run = runRepo.findById(runId).orElseThrow();
+        ensureStep(run, "MCQ");
 
-        List<Map<String, String>> history = readHistory(session.getHistoryJson());
-        String userReply = nullToEmpty(req.getUserReply());
-        if (!userReply.isBlank()) {
-            history.add(Map.of("role", "user", "text", userReply));
-        }
+        run.setMcqAnswer(answer);
+        run.setStep("WRITING");
+        runRepo.save(run);
 
-        Workbook wb = workbookRepo.findById(session.getWorkbookId())
-                .orElseThrow(() -> new NoSuchElementException("Workbook not found: " + session.getWorkbookId()));
+        Workbook wb = wbRepo.findById(run.getWorkbookId()).orElseThrow();
+        Map activity = om.readValue(wb.getActivityJson(), Map.class);
+        return pick(activity, "WRITING");
+    }
 
-        WorkbookActivity step = getStep(wb, session.getStepIndex());
-        ActivityItem sim = step.getActivities().stream()
-                .filter(a -> a.getType() == ActivityType.SIMULATION)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException("SIMULATION item not found at stepIndex"));
+    // WRITING 대답
+    public Map<String,Object> answerWriting(Long runId, String text) throws Exception {
+        WorkbookRun run = runRepo.findById(runId).orElseThrow();
+        ensureStep(run, "WRITING");
+        run.setWritingText(text);
 
-        Map<String, Object> payload = Map.of(
-                "topic", wb.getTopic(),
-                "situation", nullToEmpty(sim.getSituation()),
-                "history", history,
-                "parent_reply", userReply
+        Workbook wb = wbRepo.findById(run.getWorkbookId()).orElseThrow();
+        Map activity = om.readValue(wb.getActivityJson(), Map.class);
+        Map<String,Object> sim = pick(activity, "SIMULATION");
+
+        List<Map<String,String>> hist = new ArrayList<>();
+        hist.add(Map.of("role","ai","text", String.valueOf(sim.getOrDefault("ai_first_line",""))));
+        run.setSimHistoryJson(om.writeValueAsString(hist));
+        run.setStep("SIM1");
+        runRepo.save(run);
+
+        return sim;
+    }
+
+    // SIM 질문_2
+    public Map<String,Object> simNext(Long runId, String parentReply) throws Exception {
+        WorkbookRun run = runRepo.findById(runId).orElseThrow();
+        ensureStep(run, "SIM1", "SIM2");
+
+        Workbook wb = wbRepo.findById(run.getWorkbookId()).orElseThrow();
+        Map activity = om.readValue(wb.getActivityJson(), Map.class);
+        String topic = String.valueOf(activity.getOrDefault("activity_title", wb.getTopic()));
+        Map<String,Object> sim = pick(activity, "SIMULATION");
+        String situation = String.valueOf(sim.getOrDefault("situation",""));
+
+        // SIM HISTORY
+        List<Map<String,String>> hist = parseHist(run.getSimHistoryJson());
+
+        // Python 요청 바디
+        Map<String,Object> req = Map.of(
+                "topic", topic,
+                "situation", situation,
+                "history", hist,
+                "parent_reply", parentReply == null ? "" : parentReply
         );
-        capstone.workbook.dto.SimNextResponse py = pythonClient.simNext(payload);
 
-        String aiLine = nullToEmpty(py.getAiLine());
-        if (!aiLine.isBlank()) {
-            history.add(Map.of("role", "ai", "text", aiLine));
+        // SIM 질문_2: PYTHON 호출
+        Map<String,Object> pyOut = py.simNext(req).block();
+        String aiLine = String.valueOf(pyOut.getOrDefault("ai_line",""));
+        boolean finished = Boolean.TRUE.equals(pyOut.get("finished"));
+
+        // SIM HISTORY 추가
+        if (parentReply != null && !parentReply.isBlank()) {
+            hist.add(Map.of("role","user","text", parentReply));
+        }
+        if (aiLine != null && !aiLine.isBlank()) {
+            hist.add(Map.of("role","ai","text", aiLine));
         }
 
-        session.setHistoryJson(writeJson(history));
-        session.setUpdatedAt(LocalDateTime.now());
+        run.setSimHistoryJson(om.writeValueAsString(hist));
+        run.setStep(finished ? "FEEDBACK" : nextSimStep(run.getStep()));
+        runRepo.save(run);
 
-        if (py.isFinished()) {
-            session.setFinished(true);
-
-            stepAnswerRepo.save(WorkbookStepAnswer.builder()
-                    .workbookId(session.getWorkbookId())
-                    .stepIndex(session.getStepIndex())
-                    .stepType(ActivityType.SIMULATION)
-                    .answerText(writeJson(history))
-                    .mcqCorrect(null)
-                    .createdAt(LocalDateTime.now())
-                    .build());
-
-            boolean isLast = Objects.equals(session.getStepIndex(), getLastIndex(wb));
-            if (isLast) {
-                String overall = generateOverallFeedback(wb);
-                py.setFinalFeedback(overall != null ? overall : py.getFinalFeedback());
-            }
-        }
-
-        sessionRepo.save(session);
-
-        return SimNextResponse.builder()
-                .aiLine(aiLine)
-                .finished(py.isFinished())
-                .finalFeedback(py.getFinalFeedback())
-                .build();
+        return Map.of("aiLine", aiLine, "finished", finished);
     }
 
-    // =========================
-    // 유틸 & 보조 로직
-    // =========================
+    // 워크북 활동 피드백
+    public Map<String,Object> finalizeFeedback(Long runId) throws Exception {
+        WorkbookRun run = runRepo.findById(runId).orElseThrow();
+        ensureStep(run, "FEEDBACK");
 
-    private WorkbookActivity getStep(Workbook wb, Integer stepIndex) {
-        try {
-            WorkbookSimulateResponse simRes = objectMapper.readValue(wb.getRawJson(), WorkbookSimulateResponse.class);
+        Workbook wb = wbRepo.findById(run.getWorkbookId()).orElseThrow();
+        Map activity = om.readValue(wb.getActivityJson(), Map.class);
 
-            if (simRes.getActivities() == null || simRes.getActivities().isEmpty())
-                throw new IllegalStateException("No activities in workbook");
+        Map<String,Object> mcq = pick(activity, "MCQ");
+        Map<String,Object> writing = pick(activity, "WRITING");
+        List<Map<String,String>> hist = parseHist(run.getSimHistoryJson());
 
-            if (stepIndex == null || stepIndex < 0 || stepIndex >= simRes.getActivities().size())
-                throw new IndexOutOfBoundsException("Invalid stepIndex: " + stepIndex);
+        Map<String,Object> req = Map.of(
+                "topic", String.valueOf(activity.getOrDefault("activity_title", wb.getTopic())),
+                "mcq", List.of(Map.of(
+                        "instruction", mcq.get("instruction"),
+                        "user_answer", run.getMcqAnswer(),
+                        "optimal_option", mcq.get("optimal_option")
+                )),
+                "writing", List.of(Map.of(
+                        "instruction", writing.get("instruction"),
+                        "user_text", run.getWritingText()
+                )),
+                "sim_history", hist
+        );
 
-            return simRes.getActivities().get(stepIndex);
-        } catch (Exception e) {
-            log.error("getStep parse error", e);
-            throw new IllegalStateException("Invalid workbook JSON");
-        }
+        Map<String,Object> fb = py.feedback(req).block();
+        run.setFinalFeedbackJson(om.writeValueAsString(fb));
+        run.setFinished(true);
+        runRepo.save(run);
+        return fb;
     }
 
-    private Integer getLastIndex(Workbook wb) {
-        try {
-            WorkbookSimulateResponse simRes = objectMapper.readValue(wb.getRawJson(), WorkbookSimulateResponse.class);
-            return (simRes.getActivities() == null || simRes.getActivities().isEmpty())
-                    ? 0 : simRes.getActivities().size() - 1;
-        } catch (Exception e) {
-            return 0;
+    // 단계 저장
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> pick(Map activity, String type){
+        for (Object o : (List<?>)activity.getOrDefault("activities", List.of())) {
+            Map<String,Object> m = (Map<String,Object>) o;
+            if (type.equals(m.get("type"))) return m;
         }
+        throw new IllegalStateException(type + " not found");
     }
 
-    /** 저장된 답변(MCQ/WRITING/SIM 히스토리) 기반 최종 피드백 생성 */
-    private String generateOverallFeedback(Workbook wb) {
-        List<WorkbookStepAnswer> answers = stepAnswerRepo.findByWorkbookIdOrderByStepIndexAsc(wb.getId());
-
-        List<Map<String, Object>> mcq = new ArrayList<>();
-        List<Map<String, Object>> writing = new ArrayList<>();
-        List<Map<String, String>> simHistory = new ArrayList<>();
-
-        for (WorkbookStepAnswer a : answers) {
-            if (a.getStepType() == ActivityType.MCQ) {
-                WorkbookActivity step = getStep(wb, a.getStepIndex());
-                String question = step.getActivities().stream()
-                        .filter(it -> it.getType() == ActivityType.MCQ)
-                        .findFirst().map(ActivityItem::getInstruction).orElse("");
-                String optimal = step.getActivities().stream()
-                        .filter(it -> it.getType() == ActivityType.MCQ)
-                        .findFirst().map(ActivityItem::getOptimal_option).orElse("");
-                mcq.add(Map.of(
-                        "question", question,
-                        "selected", nullToEmpty(a.getAnswerText()),
-                        "optimal", optimal,
-                        "correct", a.getMcqCorrect()
-                ));
-            } else if (a.getStepType() == ActivityType.WRITING) {
-                WorkbookActivity step = getStep(wb, a.getStepIndex());
-                String q = step.getActivities().stream()
-                        .filter(it -> it.getType() == ActivityType.WRITING)
-                        .findFirst().map(ActivityItem::getInstruction).orElse("");
-                String ex = step.getActivities().stream()
-                        .filter(it -> it.getType() == ActivityType.WRITING)
-                        .findFirst().map(ActivityItem::getExample_answer).orElse("");
-                writing.add(Map.of(
-                        "question", q,
-                        "answer", nullToEmpty(a.getAnswerText()),
-                        "example", ex
-                ));
-            } else if (a.getStepType() == ActivityType.SIMULATION) {
-                try {
-                    List<Map<String, String>> hist = objectMapper.readValue(
-                            nullToEmpty(a.getAnswerText()),
-                            new TypeReference<List<Map<String, String>>>() {}
-                    );
-                    simHistory.addAll(hist);
-                } catch (Exception ignore) {
-                }
-            }
-        }
-
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("topic", wb.getTopic());
-        payload.put("mcq", mcq);
-        payload.put("writing", writing);
-        payload.put("sim_history", simHistory);
-
-        WorkbookFeedbackResponse res = pythonClient.finalFeedback(payload);
-        return (res != null) ? res.getOverallComment() : null;
+    // 단계 확인
+    private void ensureStep(WorkbookRun run, String... allowed){
+        for (String s: allowed) if (s.equals(run.getStep())) return;
+        throw new IllegalStateException("Invalid step: " + run.getStep());
     }
 
-    /** SIMULATION이 들어있는 스텝 인덱스를 결정 */
-    private int resolveSimulationStepIndex(WorkbookSimulateResponse simRes, Integer requested) {
-        int size = simRes.getActivities().size();
-
-        if (requested != null && requested >= 0 && requested < size) {
-            boolean hasSim = simRes.getActivities().get(requested).getActivities().stream()
-                    .anyMatch(a -> a.getType() == ActivityType.SIMULATION);
-            if (hasSim) return requested;
-        }
-
-        for (int i = 0; i < size; i++) {
-            WorkbookActivity s = simRes.getActivities().get(i);
-            if (s.getActivities() != null && s.getActivities().stream().anyMatch(a -> a.getType() == ActivityType.SIMULATION)) {
-                return i;
-            }
-        }
-
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                "No step contains SIMULATION. activities=" + size + ", requested=" + requested);
+    // SIM 2번째 턴
+    private String nextSimStep(String now){
+        return "SIM1".equals(now) ? "SIM2" : "SIM2";
     }
 
-    /** "Child:" / "아이:" 라벨 제거 후 아이 첫 대사를 추출 */
-    private String extractChildLine(String optimal) {
-        if (optimal == null) return null;
-        String[] lines = optimal.split("\\r?\\n");
-        for (String raw : lines) {
-            String t = raw.trim();
-            if (t.regionMatches(true, 0, "Child:", 0, "Child:".length()) || t.startsWith("아이:")) {
-                String text = t.replaceFirst("^(?i)Child:\\s*", "")
-                        .replaceFirst("^아이:\\s*", "")
-                        .trim();
-                return text.isEmpty() ? null : text;
-            }
-        }
-        return null;
-    }
 
-    private List<Map<String, String>> readHistory(String json) {
-        if (json == null || json.isBlank()) return new ArrayList<>();
-        try {
-            return objectMapper.readValue(json, new TypeReference<List<Map<String, String>>>() {});
-        } catch (Exception e) {
-            log.warn("Failed to read history json, start new", e);
-            return new ArrayList<>();
-        }
-    }
-
-    private String writeJson(Object o) {
-        try {
-            return objectMapper.writeValueAsString(o);
-        } catch (Exception e) {
-            return "[]";
-        }
-    }
-
-    private static String nullToEmpty(String v) {
-        return v == null ? "" : v;
-    }
-
-    /** 기본 워크북 확보(없으면 Python simulate로 생성) — 단일 정의 */
-    private Workbook getOrCreateDefaultWorkbook(String userId, Long preferredId) {
-
-        // 1) preferredId 우선
-        if (preferredId != null) {
-            Optional<Workbook> byId = workbookRepo.findById(preferredId);
-            if (byId.isPresent()) return byId.get();
-        }
-
-        // 2) 최신 워크북 사용
-        List<Workbook> latest = workbookRepo.findTop20ByUserIdOrderByCreatedAtDesc(userId);
-        if (!latest.isEmpty()) return latest.get(0);
-
-        // 3) 없으면 생성
-        try {
-            // Optional<UserProfile> 안전 처리
-            Optional<capstone.support.userprofile.UserProfile> profileOpt = userProfileLoader.find(userId);
-
-            Map<String, Object> userMap = new HashMap<>();
-            profileOpt.ifPresent(p -> {
-                userMap.put("child_age", p.getChildAge());
-                userMap.put("parenting_style", p.getParentingStyle());
-                userMap.put("parenting_goal", p.getParentingGoal());
-                userMap.put("child_traits", p.getChildTraits());
-                userMap.put("preferred_tone", p.getPreferredTone());
-                userMap.put("language", p.getLanguage());
-                userMap.put("allergies_or_health_issues", p.getHealthIssues());
-            });
-
-            WorkbookSimulateRequest simReq = WorkbookSimulateRequest.builder()
-                    .topic("테스트 토픽")
-                    .userId(userId)
-                    .user(userMap)
-                    .build();
-
-            log.info("[WORKBOOK] simulate topic={}, userId={}, userKeys={}",
-                    simReq.getTopic(), userId,
-                    (simReq.getUser() == null ? "null" : simReq.getUser().keySet()));
-
-            WorkbookSimulateResponse res = pythonClient.simulate(simReq);
-            if (res == null) throw new IllegalStateException("Python simulate returned null");
-
-            String json = objectMapper.writeValueAsString(res);
-
-            Workbook created = Workbook.builder()
-                    .userId(userId)
-                    .topic(simReq.getTopic())
-                    .activityCount(res.getActivities() == null ? 0 : res.getActivities().size())
-                    .rawJson(json)
-                    .createdAt(LocalDateTime.now())
-                    .build();
-
-            return workbookRepo.save(created);
-
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to auto-generate workbook via Python", e);
-        }
-    }
-
-    /** 공백 정규화 */
-    private static String normalizeAnswer(String s) {
-        if (s == null) return "";
-        return s.trim().replaceAll("\\s+", " ");
+    // JSON -> LIST
+    @SuppressWarnings("unchecked")
+    private List<Map<String,String>> parseHist(String json) throws Exception {
+        if (json==null || json.isBlank()) return new ArrayList<>();
+        return om.readValue(json, List.class);
     }
 }

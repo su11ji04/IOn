@@ -43,7 +43,7 @@ public class VoiceReportService {
 
     // 보이스리포트 생성
     @Transactional
-    public VoiceReportResponse createVoiceReport(MultipartFile audio) throws IOException {
+    public AnalysisReportDto.VoiceReportResponse createVoiceReport(MultipartFile audio) throws IOException {
         if (audio == null || audio.isEmpty()) {
             throw new IllegalArgumentException("AUDIO FILE IS EMPTY");
         }
@@ -174,7 +174,7 @@ public class VoiceReportService {
 
     // 보이스리포트 조회 (BY VOICEREPORT ID)
     @Transactional(readOnly = true)
-    public VoiceReportResponse get(Long id) {
+    public AnalysisReportDto.VoiceReportResponse get(Long id) {
         VoiceReport r = voiceReportRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("보이스리포트 조회에 실패했습니다."));
         return responseToVoiceReportInquiry(r);
@@ -182,7 +182,7 @@ public class VoiceReportService {
 
     // 보이스리포트 목록 조회 (BY USER ID)
     @Transactional(readOnly = true)
-    public Page<VoiceReportResponse> list(Long userId, Pageable pageable) {
+    public Page<AnalysisReportDto.VoiceReportResponse> list(Long userId, Pageable pageable) {
         Page<VoiceReport> page = (userId == null)
                 ? voiceReportRepository.findAll(pageable)
                 : voiceReportRepository.findByUser_Id(userId, pageable);
@@ -214,11 +214,11 @@ public class VoiceReportService {
     }
 
     // 보이스리포트 RETURN
-    private VoiceReportResponse responseToVoiceReportInquiry(VoiceReport r) {
+    private AnalysisReportDto.VoiceReportResponse responseToVoiceReportInquiry(VoiceReport r) {
         List<EmotionPoint> timeline = r.getEmotionTimeline() != null ? r.getEmotionTimeline() : List.of();
         List<ChangeProposal> proposals = r.getChangeProposals() != null ? r.getChangeProposals() : List.of();
 
-        return VoiceReportResponse.builder()
+        return AnalysisReportDto.VoiceReportResponse.builder()
                 .id(r.getId())
                 .subTitle(r.getSubTitle())
                 .day(String.valueOf(r.getDay()))
@@ -226,7 +226,7 @@ public class VoiceReportService {
                 .conversationSummary(r.getConversationSummary())
                 .overallFeedback(r.getOverallFeedback())
 
-                .expression(VoiceReportResponse.Expression.builder()
+                .expression(AnalysisReportDto.VoiceReportResponse.Expression.builder()
                         .parentExpression(r.getExpression() != null ? r.getExpression().getParentExpression() : null)
                         .kidExpression(r.getExpression() != null ? r.getExpression().getKidExpression() : null)
                         .parentConditions(r.getExpression() != null ? r.getExpression().getParentConditions() : null)
@@ -234,16 +234,16 @@ public class VoiceReportService {
                         .expressionFeedback(r.getExpression() != null ? r.getExpression().getExpressionFeedback() : null)
                         .build())
                 .changeProposal(proposals.stream()
-                        .map(cp -> VoiceReportResponse.ChangeProposal.builder()
+                        .map(cp -> AnalysisReportDto.VoiceReportResponse.ChangeProposal.builder()
                                 .existingExpression(cp.getExistingExpression())
                                 .proposalExpression(cp.getProposalExpression())
                                 .build())
                         .collect(Collectors.toList()))
 
 
-                .emotion(VoiceReportResponse.Emotion.builder()
+                .emotion(AnalysisReportDto.VoiceReportResponse.Emotion.builder()
                         .timeline(timeline.stream()
-                                .map(p -> VoiceReportResponse.Emotion.Timeline.builder()
+                                .map(p -> AnalysisReportDto.VoiceReportResponse.Emotion.Timeline.builder()
                                         .time(p.getTime())
                                         .momentEmotion(p.getMomentEmotion())
                                         .build())
@@ -252,7 +252,7 @@ public class VoiceReportService {
                         .build())
                 .kidAttitude(r.getKidAttitude())
 
-                .frequency(VoiceReportResponse.Frequency.builder()
+                .frequency(AnalysisReportDto.VoiceReportResponse.Frequency.builder()
                         .parentFrequency(r.getFrequency() != null ? r.getFrequency().getParentFrequency() : null)
                         .kidFrequency(r.getFrequency() != null ? r.getFrequency().getKidFrequency() : null)
                         .frequencyFeedback(r.getFrequency() != null ? r.getFrequency().getFrequencyFeedback() : null)
