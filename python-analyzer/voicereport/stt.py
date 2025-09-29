@@ -1,3 +1,4 @@
+# voicereport/whisper.py
 import whisper
 
 def run_stt(audio_path):

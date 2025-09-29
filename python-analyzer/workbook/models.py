@@ -1,7 +1,8 @@
+# workbook/models.py
 from pydantic import BaseModel, Field, constr
 from typing import Optional, List, Literal, Dict, Any, Union
 
-# ===== 공용 유저 프로필 =====
+# USER INFORMATION
 class UserProfile(BaseModel):
     child_age: Optional[int] = None
     parenting_style: Optional[str] = None
@@ -11,14 +12,12 @@ class UserProfile(BaseModel):
     language: Optional[str] = "ko"
     allergies_or_health_issues: Optional[str] = None
 
-# ✅ 클라이언트가 반드시 제공해야 하는 사용자 입력 (user_id 필수)
 class UserInput(UserProfile):
     user_id: constr(strip_whitespace=True, min_length=1)
 
-# ===== 시뮬레이션용 =====
 class SimulateRequest(BaseModel):
     topic: constr(strip_whitespace=True, min_length=1)
-    user: UserInput   # ✅ 반드시 받아야 함 (없으면 422)
+    user: UserInput
 
 ActivityType = Literal["MCQ", "WRITING", "SIMULATION"]
 
@@ -32,30 +31,29 @@ class ActivityItem(BaseModel):
     example_answer: Optional[str] = None
     # SIM
     situation: Optional[str] = None
+    # 과거 호환 키(일부 코드에서 사용 가능)
     ai_optimal_response: Optional[str] = None
+    # 현재 사용 키 (sequence_api는 이 키를 사용)
+    ai_first_line: Optional[str] = None
 
 class WorkbookActivity(BaseModel):
     activity_title: str
-    # 엔진이 아직 dict로 줄 수도 있다면 아래 Union 유지
     activities: Union[List[ActivityItem], List[Dict[str, Any]]]
 
 class SimulateResponse(BaseModel):
     activities: List[WorkbookActivity]
 
-# ===== 단계 진행용 토큰 =====
 class SequenceToken(BaseModel):
     id: str
     payload: Dict[str, Any] = Field(default_factory=dict)
 
-# ===== MCQ/WRITING 입력·출력 =====
-class McqOut(BaseModel):
-    token: SequenceToken
-    mcq: Dict[str, Any]  # {question?, instruction, options[], optimal_option}
-
-# ✅ 시퀀스 시작 시에도 사용자 정보를 반드시 받도록 강제
 class SequenceStartIn(BaseModel):
     topic: constr(strip_whitespace=True, min_length=1)
-    user: UserInput   # ✅ 필수
+    user: UserInput
+
+class McqOut(BaseModel):
+    token: SequenceToken
+    mcq: Dict[str, Any]
 
 class SequenceNextWritingIn(BaseModel):
     token: SequenceToken
@@ -63,9 +61,8 @@ class SequenceNextWritingIn(BaseModel):
 
 class WritingOut(BaseModel):
     token: SequenceToken
-    writing: Dict[str, Any]  # {question?, instruction, example_answer}
+    writing: Dict[str, Any]
 
-# ===== SIM 진행 =====
 class Turn(BaseModel):
     role: Literal["ai", "user"]
     text: str
@@ -82,7 +79,7 @@ class SimStartOut(BaseModel):
 class SimNextIn(BaseModel):
     topic: str
     situation: str
-    history: List[Turn] = []
+    history: List[Turn] = Field(default_factory=list)  # ✅
     parent_reply: str
 
 class SimNextOut(BaseModel):
@@ -90,7 +87,7 @@ class SimNextOut(BaseModel):
     finished: bool = False
     final_feedback: Optional[str] = None
 
-# ===== 최종 피드백 =====
+# ---- Final Feedback DTOs ----
 class McqItem(BaseModel):
     question: Optional[str] = None
     selected: Optional[str] = None
@@ -103,15 +100,45 @@ class WritingItem(BaseModel):
     example: Optional[str] = None
 
 class SimTurn(BaseModel):
-    role: Literal["ai","user"]
+    role: Literal["ai", "user"]
     text: str
 
 class FeedbackIn(BaseModel):
     topic: str
-    mcq: List[McqItem] = []
-    writing: List[WritingItem] = []
-    sim_history: List[SimTurn] = []
+    mcq: List[McqItem] = Field(default_factory=list)       # ✅
+    writing: List[WritingItem] = Field(default_factory=list)  # ✅
+    sim_history: List[SimTurn] = Field(default_factory=list)  # ✅
 
 class FeedbackOut(BaseModel):
     overall_comment: str
-    tips: List[str] = []
+    tips: List[str] = Field(default_factory=list)  # ✅
+
+# ---- Facade/Pipeline DTOs ----
+class PipelineIn(BaseModel):
+    topic: constr(strip_whitespace=True, min_length=1)
+    user: UserInput
+    mcq_selected: Optional[str] = None
+    writing_answer: Optional[str] = None
+    parent_replies: List[str] = Field(default_factory=list)  # ✅
+
+class PipelineOut(BaseModel):
+    token: SequenceToken
+    mcq: dict
+    writing: dict
+    sim_history: List[Turn]
+    finished: bool
+    feedback: FeedbackOut
+
+class SimulateStartSimIn(BaseModel):
+    token: SequenceToken
+    writing_answer: constr(strip_whitespace=True, min_length=1)
+
+class SimulateNextWritingIn(BaseModel):
+    token: SequenceToken
+    selected_option: str
+
+class SimulateNextTurnIn(BaseModel):
+    topic: str
+    situation: str
+    history: List[Turn] = Field(default_factory=list)  # ✅
+    parent_reply: constr(strip_whitespace=True, min_length=1)

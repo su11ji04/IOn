@@ -1,45 +1,19 @@
+# workbook/sequence_api.py
 from fastapi import APIRouter, HTTPException
 from uuid import uuid4
 from typing import Any, Dict
-import os
-
+from openai import OpenAI
+from workbook.utils import load_openai_api_key
+from workbook.activity_builder import _build_one_activity
 from workbook.models import (
     McqOut, SequenceStartIn, SequenceNextWritingIn, WritingOut,
-    SequenceToken
+    SequenceToken, SimStartIn, SimStartOut, SimNextIn, SimNextOut
 )
-from workbook.settings import CSV_PATH, HAVE_SIM_ENGINE
-from workbook.run_workbook_simulation import run_workbook_simulation
 
 router = APIRouter(prefix="/workbook/sequence", tags=["sequence"])
 
-def _demo_activity() -> Dict[str, Any]:
-    return {
-        "activity_title": "데모 활동",
-        "activities": [
-            {"type": "WRITING", "instruction": "오늘 아이와 있었던 긍정적 순간을 서술하세요.", "example_answer": "아이와 블록 놀이를 하며 차분히 기다려줬다."},
-            {"type": "MCQ", "instruction": "아이의 떼쓰기 대응으로 더 적절한 것은?", "options": ["무시", "소리치기", "감정명명 후 선택지 제시", "바로 사주기"], "optimal_option": "감정명명 후 선택지 제시"},
-            {"type": "SIMULATION", "instruction": "상황에 맞게 대화하세요.", "situation": "마트에서 과자를 사달라고 떼쓰는 상황", "ai_optimal_response": "부모: ...\\n아이: ..."}
-        ]
-    }
-
-def _build_one_activity(topic: str, user: Any) -> Dict[str, Any]:
-    # ✅ dict 변환 보장
-    if not isinstance(user, dict):
-        try:
-            user = user.dict()
-        except Exception:
-            raise HTTPException(500, f"user is not dict-like: {type(user)}")
-
-    if not HAVE_SIM_ENGINE or not os.path.exists(CSV_PATH):
-        return _demo_activity()
-    try:
-        acts = run_workbook_simulation(csv_path=CSV_PATH, topic=topic, user=user, max_chunks=1)
-        if not acts:
-            return _demo_activity()
-        return acts[0]
-    except Exception as e:
-        print(f"[WORKBOOK] sequence_api fallback to demo due to error: {e}")
-        return _demo_activity()
+def _client():
+    return OpenAI(api_key=load_openai_api_key())
 
 def _pick(activity: Dict[str, Any], t: str) -> Dict[str, Any]:
     for item in activity.get("activities", []):
@@ -51,22 +25,43 @@ def _pick(activity: Dict[str, Any], t: str) -> Dict[str, Any]:
 def sequence_start(req: SequenceStartIn):
     try:
         activity = _build_one_activity(req.topic, req.user)
-        mcq = _pick(activity, "MCQ")
-        if not mcq.get("options") or len(mcq["options"]) < 4:
-            raise HTTPException(500, "MCQ options < 4")
 
-        tok = SequenceToken(id=str(uuid4()), payload={
-            "topic": req.topic,
-            "user": req.user.dict(),
-            "activity_title": activity.get("activity_title"),
-            # "activity_full": activity,   # ❌ 제거 → 선택형만 리턴
-            "mcq": {
-                "instruction": mcq.get("instruction"),
-                "options": mcq.get("options"),
-                "optimal_option": mcq.get("optimal_option")
+        mcq = _pick(activity, "MCQ")
+        options = mcq.get("options") or []
+        optimal = mcq.get("optimal_option")
+
+        if len(options) < 4:
+            raise HTTPException(500, "MCQ options < 4")
+        if optimal not in options:
+            raise HTTPException(500, "MCQ optimal_option must be one of options")
+
+        try:
+            wr = _pick(activity, "WRITING")
+            writing_cache = {
+                "instruction": wr.get("instruction"),
+                "example_answer": wr.get("example_answer"),
             }
-        })
+        except Exception:
+            writing_cache = None
+
+        tok = SequenceToken(
+            id=str(uuid4()),
+            payload={
+                "topic": req.topic,
+                "user": req.user.dict(),
+                "activity_title": activity.get("activity_title"),
+                "activity_full": activity,
+                "mcq": {
+                    "instruction": mcq.get("instruction"),
+                    "options": options,
+                    "optimal_option": optimal,
+                },
+                "writing": writing_cache,
+            },
+        )
         return McqOut(token=tok, mcq=tok.payload["mcq"])
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"sequence_start failed: {e}")
 
@@ -80,14 +75,68 @@ def sequence_next_writing(req: SequenceNextWritingIn):
 
         activity = payload.get("activity_full")
         if not activity:
-            activity = _build_one_activity(payload["topic"], payload["user"])
-            payload["activity_full"] = activity
+            raise HTTPException(409, "activity not initialized. Call /workbook/sequence/start first")
 
         writing = _pick(activity, "WRITING")
         payload["writing"] = {
             "instruction": writing.get("instruction"),
-            "example_answer": writing.get("example_answer")
+            "example_answer": writing.get("example_answer"),
         }
         return WritingOut(token=req.token, writing=payload["writing"])
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"sequence_next_writing failed: {e}")
+
+@router.post("/sim/start", response_model=SimStartOut)
+def sim_start(req: SimStartIn):
+    try:
+        payload = req.token.payload
+        if "writing" not in payload:
+            raise HTTPException(400, "writing step not completed")
+        payload["writing_answer"] = req.writing_answer
+
+        activity = payload.get("activity_full")
+        if not activity:
+            raise HTTPException(409, "activity not initialized. Call /workbook/sequence/start first")
+
+        sim = _pick(activity, "SIMULATION")
+        situation = sim.get("situation")
+        ai_first = sim.get("ai_first_line")
+        if not ai_first:
+            raise HTTPException(500, "SIMULATION.ai_first_line missing")
+
+        payload["sim"] = {
+            "situation": situation,
+            "history": [{"role": "ai", "text": ai_first}],
+        }
+        return SimStartOut(token=req.token, situation=situation, ai_first_line=ai_first)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"sim_start failed: {e}")
+
+@router.post("/sim/next", response_model=SimNextOut)
+def sim_next(req: SimNextIn):
+    try:
+        user_turns = sum(1 for t in req.history if t.role == "user") + (1 if req.parent_reply.strip() else 0)
+        if user_turns >= 2:
+            return SimNextOut(ai_line="", finished=True, final_feedback=None)
+
+        client = _client()
+        messages = [
+            {"role": "system", "content": "너는 아이 역할로 대화해. 한 번에 한 문장만, 짧고 자연스럽게 한국어로 답해. 상황과 이전 대사를 고려해."},
+            {"role": "system", "content": f"상황: {req.situation}\n주제: {req.topic}"},
+        ]
+        for t in req.history:
+            if t.role == "ai":
+                messages.append({"role": "assistant", "content": t.text})
+            else:
+                messages.append({"role": "user", "content": t.text})
+        messages.append({"role": "user", "content": req.parent_reply})
+
+        resp = client.chat.completions.create(model="gpt-4", messages=messages, temperature=0.7)
+        ai_line = resp.choices[0].message.content.strip()
+        return SimNextOut(ai_line=ai_line, finished=False, final_feedback=None)
+    except Exception as e:
+        raise HTTPException(500, f"sim_next failed: {e}")

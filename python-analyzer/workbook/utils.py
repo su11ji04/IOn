@@ -1,20 +1,25 @@
 # workbook/utils.py
 import os
+import pathlib
 
-def load_openai_api_key():
-    # 1) 환경변수
-    env_key = os.getenv("OPENAI_API_KEY")
-    if env_key:
-        return env_key.strip()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.normpath(os.path.join(BASE_DIR, "../data/ocr_paragraphs.csv"))
 
-    # 2) 파일 fallback: 프로젝트 루트/keys/openai_key.txt
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # python-analyzer
-    filepath = os.path.join(base_dir, "keys", "openai_key.txt")
-    if os.path.exists(filepath):
-        with open(filepath, "r", encoding="utf-8") as f:
-            return f.read().strip()
+# OPENAI KEY LOAD
+def load_openai_api_key() -> str:
+    # 환경 변수
+    env = os.getenv("OPENAI_API_KEY")
+    if env and env.strip():
+        return env.strip()
 
-    # 3) 둘 다 없으면 명시적으로 에러
+    # CSV FILE
+    p = pathlib.Path(__file__).resolve().parents[1] / "keys" / "openai_key.txt"
+    if p.exists():
+        key = p.read_text(encoding="utf-8").strip()
+        if key:
+            return key
+
+    # ERROR
     raise RuntimeError(
-        "OpenAI API key not found. Set OPENAI_API_KEY env var or create keys/openai_key.txt"
+        "OPENAI_API_KEY not found. Set env var or create keys/openai_key.txt"
     )
