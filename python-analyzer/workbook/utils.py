@@ -19,7 +19,7 @@ def load_openai_api_key() -> str:
         if key:
             return key
 
-    # ERROR
+    # ERROR_
     raise RuntimeError(
         "OPENAI_API_KEY not found. Set env var or create keys/openai_key.txt"
     )
