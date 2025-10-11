@@ -35,7 +35,6 @@ public class UserProfileLoader {
             String header = br.readLine(); // skip header
             String line;
             while ((line = br.readLine()) != null) {
-                // CSV에 콤마 포함 가능하니 최단으로 split, 필요시 CSV 파서로 교체
                 String[] arr = line.split(",", -1);
                 if (arr.length < 8) continue;
                 String uid = arr[0].trim();

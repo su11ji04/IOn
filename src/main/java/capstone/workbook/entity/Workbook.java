@@ -2,35 +2,44 @@ package capstone.workbook.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
-@Getter @Setter
-@NoArgsConstructor @AllArgsConstructor @Builder
-@Entity @Table(name = "workbook")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@Entity
+@Table(
+        name = "workbook",
+        indexes = {
+                @Index(name = "idx_workbook_user", columnList = "user_id"),
+                @Index(name = "idx_workbook_created_at", columnList = "created_at")
+        }
+)
 public class Workbook {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 64)
+    @Column(name = "user_id", length = 100, nullable = false)
     private String userId;
 
-    @Column(nullable = false, length = 200)
-    private String topic;
+    @Column(name = "activity_title", length = 200, nullable = false)
+    private String activityTitle;
 
-    @Column(nullable = false)
+    @Column(name = "activity_count", nullable = false)
     private Integer activityCount;
 
     @Lob
-    @Column(nullable = false)
-    private String activityJson;   // ← rawJson → activityJso
+    @Column(name = "activity_json", nullable=false)
+    private String activityJson;
 
-    @Column(nullable = false)
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
-    @PrePersist
-    void onCreate() {
-        if (createdAt == null) createdAt = LocalDateTime.now();
-    }
 }

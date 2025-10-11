@@ -1,140 +1,66 @@
 package capstone.voicereport.service;
 
-import capstone.voicereport.dto.AnalysisReportDto;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
+import capstone.voicereport.dto.VoiceReportResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatusCode;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.Map;
-
-@Slf4j
 @Component
+@RequiredArgsConstructor
 public class PythonAnalysisClient {
 
-    private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(10);
+    @Value("${analysis.python.base-url}")
+    private String baseUrl;
 
-    private final WebClient webClient;
-    private final ObjectMapper objectMapper;
+    public VoiceReportResponse analyze(byte[] wavBytes,String userId) {
+        MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+        ByteArrayResource fileRes = new ByteArrayResource(wavBytes) {
+            @Override public String getFilename() { return "audio.wav"; }
+        };
 
-    // WEB CLIENT BEAN 생성
-    public PythonAnalysisClient(
-            @Qualifier("pythonAnalyzerWebClient") WebClient webClient,
-            ObjectMapper objectMapper
-    ) {
-        this.webClient = webClient;
-        this.objectMapper = objectMapper;
+        HttpHeaders fileHeaders = new HttpHeaders();
+        fileHeaders.setContentType(MediaType.parseMediaType("audio/wav"));
+        form.add("audio", new HttpEntity<>(fileRes, fileHeaders));
+        form.add("userId", userId);
+
+        try {
+            return WebClient.builder()
+                    .baseUrl(baseUrl)
+                    .build()
+                    .post()
+                    .uri("/voice-report/from-audio")
+                    .header("X-User-Id", userId)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(BodyInserters.fromMultipartData(form))
+                    .retrieve()
+                    .onStatus(HttpStatusCode::is4xxClientError, resp ->
+                            resp.bodyToMono(String.class)
+                                    .flatMap(body -> Mono.error(new PythonBadRequestException(body)))
+                    )
+                    .onStatus(HttpStatusCode::is5xxServerError, resp ->
+                            resp.bodyToMono(String.class)
+                                    .flatMap(body -> Mono.error(new PythonServerException(body)))
+                    )
+                    .bodyToMono(VoiceReportResponse.class)
+                    .block();
+        } catch (PythonBadRequestException | PythonServerException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new PythonServerException("Python call failed: " + e.getMessage());
+        }
     }
 
-    // PYTHON API 호출(오디오, 오디오 파일 이름, USER ID, USER 정보)
-    public AnalysisReportDto analyze(
-            byte[] audioBytes,
-            String filename,
-            String userId,
-            Map<String, Object> userProfileMap
-    ) {
-        MultipartBodyBuilder body = new MultipartBodyBuilder();
-
-        // AUDIO
-        if (audioBytes == null || audioBytes.length == 0) {
-            throw new IllegalArgumentException("Audio file must not be empty");
-        }
-        // AUDIO FILE NAME
-        if (filename == null || filename.isBlank()) {
-            throw new IllegalArgumentException("Filename must not be null or blank");
-        }
-        String safeName = filename.trim();
-        //AUDIO SETTING
-        body.part("audio", new ByteArrayResource(audioBytes) {
-                    @Override public String getFilename() { return safeName; }
-                })
-                .filename(safeName)
-                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE);
-
-
-
-        // USER ID
-        if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("User ID must not be null or blank");
-        }
-        // USER SETTING
-        body.part("user_id", userId)
-                .header(HttpHeaders.CONTENT_TYPE, "text/plain; charset=UTF-8");
-        if (userProfileMap != null && !userProfileMap.isEmpty()) {
-            try {
-                String json = objectMapper.writeValueAsString(userProfileMap);
-                log.info("[USER SETTING] user_profile_json length(bytes UTF-8)={}", json.getBytes(StandardCharsets.UTF_8).length);
-                log.info("[USER SETTING] user_profile_json preview={}", json.substring(0, Math.min(200, json.length())));
-                body.part("user_profile_json", json)
-                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
-            } catch (Exception e) {
-                log.warn("Failed to serialize userProfileMap: {}", e.toString());
-            }
-        } else {
-            log.warn("[USER SETTING] user_profile_map is empty -> NOT sending user_profile_json");
-        }
-
-
-
-        //PYTHON 실행
-        try {
-            String bodyStr = webClient.post()
-                    .uri("/analyze")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .accept(MediaType.APPLICATION_JSON)
-                    .body(BodyInserters.fromMultipartData(body.build()))
-                    .exchangeToMono(res -> res.bodyToMono(String.class)
-                            .defaultIfEmpty("")
-                            .map(s -> {
-                                HttpStatusCode code = res.statusCode();
-                                log.info("[PYTHON CODE] status={}, body.len={}",
-                                        code.value(), s.length());
-                                if (!code.is2xxSuccessful()) {
-                                    throw new RuntimeException("Python HTTP " + code.value() + " body: " + s);
-                                }
-                                return s;
-                            })
-                    )
-                    .timeout(REQUEST_TIMEOUT)
-                    .doOnError(err -> log.error("[PYTHON CODE] {}", err.toString(), err))
-                    .block();
-
-            // PYTHON RETURN BODY = NULL or BLANK
-            if (bodyStr == null || bodyStr.isBlank()) {
-                log.warn("[PYTHON CODE] empty body from Python");
-                return null;
-            }
-
-            AnalysisReportDto ar = objectMapper.readValue(bodyStr, AnalysisReportDto.class);
-
-            if (ar != null) {
-                // PYTHON RETURN BODY 파싱 성공
-                log.info("[PYTHON CODE] 응답 매핑 OK: subTitle={}, summary?={}, freq?={}, expr?={}, timelineLen={}",
-                        ar.getSubTitle(),
-                        ar.getConversationSummary() != null,
-                        ar.getFrequency() != null,
-                        ar.getExpression() != null,
-                        (ar.getEmotion() != null && ar.getEmotion().getTimeline() != null)
-                                ? ar.getEmotion().getTimeline().size() : 0
-                );
-            } else {
-                // PYTHON RETURN BODY 파싱 결과 NULL
-                log.warn("[PYTHON CODE] parsed AnalysisReportDto is null");
-            }
-            return ar;
-
-        } catch (Exception e) {
-            log.error("[PYTHON CODE] parse or call failed: {}", e.toString(), e);
-            return null;
-        }
+    public static class PythonBadRequestException extends RuntimeException {
+        public PythonBadRequestException(String msg) { super(msg); }
+    }
+    public static class PythonServerException extends RuntimeException {
+        public PythonServerException(String msg) { super(msg); }
     }
 }

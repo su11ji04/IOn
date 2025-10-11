@@ -9,6 +9,7 @@ import io.netty.handler.timeout.WriteTimeoutHandler;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,14 +37,28 @@ public class WebClientConfig {
     private static final Logger log = LoggerFactory.getLogger(WebClientConfig.class);
 
     @Bean(name = "pythonAnalyzerWebClient")
-    public WebClient pythonAnalyzerWebClient() {
+    public WebClient pythonAnalyzerWebClient(
+            @Value("${analysis.python.baseUrl:${analysis.python.base-url:http://127.0.0.1:8081}}") String baseUrl,
+            @Value("${analysis.python.connectTimeoutMs:5000}") int connectTimeoutMs,
+            @Value("${analysis.python.readTimeoutMs:600000}") int readTimeoutMs
+    ) {
+        log.info("[PYTHON-ANALYZER] Using baseUrl={}", baseUrl);
+
         HttpClient http = HttpClient.create()
-                .responseTimeout(Duration.ofMinutes(5));
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, connectTimeoutMs)
+                .responseTimeout(Duration.ofMillis(readTimeoutMs))
+                .doOnConnected(conn -> {
+                    conn.addHandlerLast(new ReadTimeoutHandler(readTimeoutMs, TimeUnit.MILLISECONDS));
+                    conn.addHandlerLast(new WriteTimeoutHandler(readTimeoutMs, TimeUnit.MILLISECONDS));
+                });
 
         return WebClient.builder()
-                .baseUrl("http://127.0.0.1:8081")
+                .baseUrl(baseUrl)
                 .clientConnector(new ReactorClientHttpConnector(http))
-                .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                .defaultHeaders(h -> h.setContentType(MediaType.APPLICATION_JSON))
+                .exchangeStrategies(ExchangeStrategies.builder()
+                        .codecs(c -> c.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
+                        .build())
                 .build();
     }
 

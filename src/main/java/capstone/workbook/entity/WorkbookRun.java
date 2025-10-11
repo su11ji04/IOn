@@ -2,36 +2,63 @@ package capstone.workbook.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
 import java.time.LocalDateTime;
 
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-@Entity @Table(name = "workbook_run")
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor @Builder
+@Entity
+@Table(
+        name = "workbook_run",
+        indexes = {
+                @Index(name = "idx_workbook_run_user", columnList = "user_id"),
+                @Index(name = "idx_workbook_run_workbook_id", columnList = "workbook_id"),
+                @Index(name = "idx_workbook_run_created_at", columnList = "created_at")
+        }
+)
 public class WorkbookRun {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false) private Long workbookId;
-    @Column(nullable = false, length = 64) private String userId;
+    @Column(name = "workbook_id", nullable = false)
+    private Long workbookId;
 
-    // 진행 단계: MCQ → WRITING → SIM1 → SIM2 → FEEDBACK
-    @Column(nullable = false, length = 16) private String step;
+    @Column(name = "user_id", length = 100, nullable = false)
+    private String userId;
 
-    // 답변 히스토리
-    @Column(length = 200) private String mcqAnswer;     // 사용자 선택 텍스트
-    @Lob private String writingText;                    // 서술형 답
-    @Lob private String simHistoryJson;                 // [{"role":"ai|user","text":"..."}...]
+    // 진행 단계: MCQ → WRITING → SIM → DONE
+    @Column(name = "step", length = 16, nullable = false)
+    private String step;
 
-    @Lob private String finalFeedbackJson;              // {"overall_comment":..., "tips":[...]}
-    @Column(nullable = false) private Boolean finished;
+    // 답변
+    @Column(name = "mcq_answer", length = 200)
+    private String mcqAnswer;
+    @Lob
+    @Column(name = "writing_text")
+    private String writingText;
+    @Lob
+    @Column(name = "sim_answer")
+    private String simAnswer;
 
-    @Column(nullable = false) private LocalDateTime createdAt;
-    @Column(nullable = false) private LocalDateTime updatedAt;
+    // 완료 여부
+    @Column(name = "finished", nullable = false)
+    private Boolean finished;
 
-    @PrePersist void onCreate(){
-        if (createdAt==null) createdAt = LocalDateTime.now();
-        if (updatedAt==null) updatedAt = LocalDateTime.now();
-        if (finished==null) finished=false;
-        if (step==null) step="MCQ";
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    void onCreate() {
+        if (finished == null) finished = false;
+        if (step == null) step = "MCQ";
     }
-    @PreUpdate void onUpdate(){ updatedAt = LocalDateTime.now(); }
 }

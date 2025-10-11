@@ -26,17 +26,18 @@ spring:
 
   sql:
     init:
-      mode: never   # 또는 아예 제거
+      mode: never
 
 logging:
   level:
     reactor.netty.http.client: DEBUG
     org.springframework.web.reactive.function.client: DEBUG
     org.springframework.web.reactive.function.client.ExchangeFunctions: TRACE
+    org.springframework.boot.autoconfigure: DEBUG
 
 analysis:
   python:
-    baseUrl: http://localhost:8081
+    baseUrl: http://localhost:9095
     connectTimeoutMs: 5000
     readTimeoutMs: 500000000
 
@@ -58,10 +59,13 @@ chatbot:
 
 workbook:
   python:
-    base-url: http://127.0.0.1:8083
+    base-url: http://localhost:9095
     feedback-path: /workbook/feedback
     read-timeout-ms: 120000
 
 
+demo:
+  enabled: true
+  user-id: u001
 
 

@@ -1,45 +1,56 @@
 package capstone.workbook.controller;
 
+import capstone.web.CurrentUser;
+import capstone.workbook.dto.RunDtos;
 import capstone.workbook.dto.RunDtos.*;
 import capstone.workbook.service.WorkbookService;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
-
-@CrossOrigin(origins = "*") //개발용
 @RestController
 @RequestMapping("/api/workbooks")
 @RequiredArgsConstructor
 public class WorkbookRunController {
 
     private final WorkbookService service;
+    private final CurrentUser currentUser;
 
-    @PostMapping("/{id}/run/start")
-    public StartResponse start(@PathVariable("id") Long workbookId) throws Exception {
-        return service.runStart(workbookId, "u001");
+    // 선택형
+    @PostMapping(value="/{id}/run/start", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<StartResponse> start(
+            HttpServletRequest req,
+            @PathVariable("id") Long workbookId
+    ) throws Exception {
+        String userId = currentUser.getUserId(req);
+        return ResponseEntity.ok(service.runStart(workbookId, userId));
     }
 
-    @PostMapping("/runs/{runId}/answer/mcq")
-    public Map<String,Object> mcq(@PathVariable("runId") Long runId,
-                                  @RequestBody McqAnswerRequest req) throws Exception {
-        return service.answerMcq(runId, req.getAnswer());
+    // 선택형 답변 제출 + 작성형
+    @PostMapping(
+            value="/runs/{runId}/answer/mcq",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> mcq(
+            @PathVariable("runId") Long runId,
+            @RequestBody RunDtos.McqAnswerRequest reqBody
+    ) throws Exception {
+        var writing = service.answerMcq(runId, reqBody.getAnswer());
+        return ResponseEntity.ok(writing);
     }
 
-    @PostMapping("/runs/{runId}/answer/writing")
-    public Map<String,Object> writing(@PathVariable("runId") Long runId,
-                                      @RequestBody WritingAnswerRequest req) throws Exception {
-        return service.answerWriting(runId, req.getText());
-    }
-
-    @PostMapping("/runs/{runId}/sim/next")
-    public Map<String,Object> simNext(@PathVariable("runId") Long runId,
-                                      @RequestBody SimNextRequest req) throws Exception {
-        return service.simNext(runId, req.getParentReply());
-    }
-
-    @PostMapping("/runs/{runId}/feedback")
-    public Map<String,Object> feedback(@PathVariable("runId") Long runId) throws Exception {
-        return service.finalizeFeedback(runId);
+    // 작성형 답변 제출 + 시뮬레이션
+    @PostMapping(
+            value="/runs/{runId}/answer/writing",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> writing(
+            @PathVariable("runId") Long runId,
+            @RequestBody RunDtos.WritingAnswerRequest reqBody
+    ) throws Exception {
+        var sim = service.answerWriting(runId, reqBody.getText());
+        return ResponseEntity.ok(sim);
     }
 }

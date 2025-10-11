@@ -1,16 +1,19 @@
 package capstone.voicereport.controller;
 
-import capstone.voicereport.dto.AnalysisReportDto;
-import capstone.voicereport.dto.MySpeechStyleResponse;
+import capstone.voicereport.dto.PagedListResponse;
+import capstone.voicereport.dto.VoiceReportListResponse;
+import capstone.voicereport.dto.VoiceReportResponse;
+import capstone.voicereport.error.VoiceReportException;
 import capstone.voicereport.service.VoiceReportService;
+import capstone.web.CurrentUser;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import lombok.extern.slf4j.Slf4j;
-import java.io.IOException;
 
 @Slf4j
 @RestController
@@ -19,48 +22,46 @@ import java.io.IOException;
 public class VoiceReportController {
 
     private final VoiceReportService voiceReportService;
+    private final CurrentUser currentUser;
 
-    // 음성 파일 및 보이스리포트 생성 (POST: /api/voice-reports)
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<AnalysisReportDto.VoiceReportResponse> create(
-            @RequestPart("audio") MultipartFile audio
-    ) throws IOException {
-        log.info("[VOICEREPORT CONTROLLER] received audio: name={}, size={}, contentType={}",
-                audio.getOriginalFilename(), audio.getSize(), audio.getContentType());
-        AnalysisReportDto.VoiceReportResponse res = voiceReportService.createVoiceReport(audio);
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    // 보이스 리포트 생성
+    @PostMapping(
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<VoiceReportResponse> createVoiceReport(
+            HttpServletRequest request,
+            @RequestPart("video") MultipartFile video
+    ) throws Exception {
+
+        String userId = currentUser.getUserId(request);
+
+        if (video == null || video.isEmpty()) {
+            throw VoiceReportException.videoEmpty();
+        }
+
+        VoiceReportResponse resp = voiceReportService.createVoiceReportFromVideo(userId, video);
+        return ResponseEntity.ok(resp);
     }
 
-    // 보이스리포트 조회 (BY VOICEREPORT ID) (GET: /api/voice-reports/{id})
+    // 보이스리포트 단건 조회
     @GetMapping("/{id}")
-    public ResponseEntity<AnalysisReportDto.VoiceReportResponse> get(@PathVariable("id") Long id) {
+    public ResponseEntity<VoiceReportResponse> get(@PathVariable("id") Integer id) {
         return ResponseEntity.ok(voiceReportService.get(id));
     }
 
     // 보이스리포트 목록 조회
-    @GetMapping //(GET: /api/voice-reports?userId={u}&page={p}&size={s})
-    public ResponseEntity<Page<AnalysisReportDto.VoiceReportResponse>> list(
-            @RequestParam(value = "userId", required = false) Long userId,
+    @GetMapping
+    public ResponseEntity<PagedListResponse<VoiceReportListResponse>> list(
+            @RequestParam("userId") String userId,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size
     ) {
+        Page<VoiceReportListResponse> p = voiceReportService.list(userId, PageRequest.of(page, size));
         return ResponseEntity.ok(
-                voiceReportService.list(userId, PageRequest.of(page, size))
+                new PagedListResponse<>(p.getContent(), p.getTotalPages(), p.getSize())
         );
     }
 
-    // 보이스리포트 삭제 (DELETE: /api/voice-reports/{id})
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable("id") Long id) throws IOException {
-        voiceReportService.delete(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    //나의 말투 분석 (GET: /api/voice-reports/my-style?userId={u}&limit={n})
-    @GetMapping("/my-style")
-    public ResponseEntity<MySpeechStyleResponse> myStyle(
-            @RequestParam(value = "userId", required = false) Long userId,
-            @RequestParam(value = "limit", defaultValue = "5") int limit
-    ) { return ResponseEntity.ok(voiceReportService.buildMyStyle(userId, limit)); }
 
 }
