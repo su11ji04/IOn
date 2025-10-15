@@ -25,6 +25,9 @@ public class Workbook {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "chapter_id", nullable = false)
+    private int chapterId;
+
     @Column(name = "user_id", length = 100, nullable = false)
     private String userId;
 
@@ -38,8 +41,23 @@ public class Workbook {
     @Column(name = "activity_json", nullable=false)
     private String activityJson;
 
+    @Column(name = "mcq_answer")
+    private String mcqAnswer;
+
+    @Column(name = "writing_answer")
+    private String writingAnswer;
+
+    @Column(name = "sim_answer")
+    private String simAnswer;
+
+    @Column(name = "feedback")
+    private String feedback;
+
+    @Builder.Default
+    @Column(name = "finished", nullable = false)
+    private Boolean finished = false;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
-
 }

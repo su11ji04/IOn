@@ -9,7 +9,7 @@ public class VoiceReportException extends AppException {
     public VoiceReportException(ErrorCode code, String message, String details) { super(code, message, details); }
 
     // 리포트 조회 실패
-    public static VoiceReportException notFound(Integer id) {
+    public static VoiceReportException notFound(Long id) {
         return new VoiceReportException(ErrorCode.VR_NOT_FOUND, "리포트를 찾을 수 없습니다.", "id=" + id);
     }
 
@@ -18,9 +18,6 @@ public class VoiceReportException extends AppException {
         return new VoiceReportException(ErrorCode.VR_AUDIO_EMPTY, "업로드한 영상이 비어 있습니다.");
     }
 
-    public static VoiceReportException videoTooLong(String limitSec) {
-        return new VoiceReportException(ErrorCode.VR_AUDIO_TOO_LONG, "허용 길이를 초과한 영상 파일입니다.", "limitSec=" + limitSec);
-    }
 
     public static VoiceReportException videoUnsupported(String mime) {
         return new VoiceReportException(ErrorCode.VR_AUDIO_UNSUPPORTED, "지원하지 않는 영상 포맷입니다.", "mime=" + mime);

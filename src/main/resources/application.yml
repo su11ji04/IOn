@@ -1,71 +1,89 @@
+server:
+  tomcat:
+    max-http-form-post-size: 256MB
+    max-swallow-size: 256MB
+
 spring:
-  servlet:
-    multipart:
-      max-file-size: 50MB
-      max-request-size: 60MB
-
-  jackson:
-    deserialization:
-      fail-on-unknown-properties: false
-
   datasource:
-    url: jdbc:h2:mem:testdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: jdbc:mysql://ion-database-rds.czmtnxk070k4.ap-northeast-2.rds.amazonaws.com:3306/ion?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true
+    username: admin
+    password: IOn2025!
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 600000
+      connection-timeout: 30000
+      max-lifetime: 1800000
 
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        jdbc.time_zone: Asia/Seoul
 
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+  # (MVC) 업로드 용량 제한
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 220MB
+      file-size-threshold: 2MB
 
-  sql:
-    init:
-      mode: never
+  # (WebFlux) 디코딩/멀티파트 버퍼
+  codec:
+    max-in-memory-size: 256MB
+  webflux:
+    multipart:
+      max-in-memory-size: 256MB
 
 logging:
   level:
-    reactor.netty.http.client: DEBUG
-    org.springframework.web.reactive.function.client: DEBUG
-    org.springframework.web.reactive.function.client.ExchangeFunctions: TRACE
-    org.springframework.boot.autoconfigure: DEBUG
+    root: INFO
+    org.springframework.boot.autoconfigure: INFO
+    org.hibernate.SQL: INFO
+
+uploads:
+  voice-dir: /var/app/uploads/voice
+
+# ffmpeg 실행 경로 및 변환 타임아웃(서비스 코드 @Value 사용)
+media:
+  ffmpeg:
+    path: ffmpeg
+  convert:
+    timeoutSec: 120
 
 analysis:
   python:
-    baseUrl: http://localhost:9095
+    baseUrl: http://10.0.1.91:9095
     connectTimeoutMs: 5000
-    readTimeoutMs: 500000000
-
-uploads:
-  voice-dir: uploads/voice
-
-
-userprofile:
-  csvPath: "C:/Users/82103/Desktop/initial/src/main/resources/capstone/data/user_profiles.csv"
-  csvCharset: "UTF-8"
-
-
-chatbot:
-  python:
-    base-url: http://127.0.0.1:8082
-    connect-timeout-ms: 500000
-    read-timeout-ms: 6000000
-
+    readTimeoutMs: 500000
 
 workbook:
   python:
-    base-url: http://localhost:9095
-    feedback-path: /workbook/feedback
+    create-base-url: http://10.0.1.91:9096
+    feedback-base-url: http://10.0.1.91:9098
     read-timeout-ms: 120000
 
+chatbot:
+  python:
+    base-url: http://10.0.1.91:9097
+    connect-timeout-ms: 5000
+    read-timeout-ms: 600000
 
 demo:
   enabled: true
   user-id: u001
 
-
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true

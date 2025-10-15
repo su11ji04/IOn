@@ -2,7 +2,7 @@ package capstone.voicereport.service;
 
 import capstone.voicereport.dto.VoiceReportResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -16,37 +16,41 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class PythonAnalysisClient {
 
-    @Value("${analysis.python.base-url}")
-    private String baseUrl;
+    private final @Qualifier("pythonAnalyzerWebClient") WebClient pythonAnalyzerWebClient;
 
-    public VoiceReportResponse analyze(byte[] wavBytes,String userId) {
+    public VoiceReportResponse analyze(byte[] wavBytes, String userId) {
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+
         ByteArrayResource fileRes = new ByteArrayResource(wavBytes) {
-            @Override public String getFilename() { return "audio.wav"; }
+            @Override
+            public String getFilename() {
+                return "audio.wav";
+            }
         };
 
         HttpHeaders fileHeaders = new HttpHeaders();
         fileHeaders.setContentType(MediaType.parseMediaType("audio/wav"));
+
         form.add("audio", new HttpEntity<>(fileRes, fileHeaders));
-        form.add("userId", userId);
+        form.add("report_id", "1");
 
         try {
-            return WebClient.builder()
-                    .baseUrl(baseUrl)
-                    .build()
-                    .post()
-                    .uri("/voice-report/from-audio")
-                    .header("X-User-Id", userId)
+            return pythonAnalyzerWebClient.post()
+                    .uri("/api/voice-report")
+                    .header("user_id", userId)
                     .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .accept(MediaType.APPLICATION_JSON)
                     .body(BodyInserters.fromMultipartData(form))
                     .retrieve()
                     .onStatus(HttpStatusCode::is4xxClientError, resp ->
                             resp.bodyToMono(String.class)
-                                    .flatMap(body -> Mono.error(new PythonBadRequestException(body)))
+                                    .map(body -> new PythonBadRequestException(
+                                            "[4xx] Python analyzer responded: " + body))
                     )
                     .onStatus(HttpStatusCode::is5xxServerError, resp ->
                             resp.bodyToMono(String.class)
-                                    .flatMap(body -> Mono.error(new PythonServerException(body)))
+                                    .map(body -> new PythonServerException(
+                                            "[5xx] Python analyzer error: " + body))
                     )
                     .bodyToMono(VoiceReportResponse.class)
                     .block();
@@ -58,9 +62,14 @@ public class PythonAnalysisClient {
     }
 
     public static class PythonBadRequestException extends RuntimeException {
-        public PythonBadRequestException(String msg) { super(msg); }
+        public PythonBadRequestException(String msg) {
+            super(msg);
+        }
     }
+
     public static class PythonServerException extends RuntimeException {
-        public PythonServerException(String msg) { super(msg); }
+        public PythonServerException(String msg) {
+            super(msg);
+        }
     }
 }

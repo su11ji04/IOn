@@ -8,6 +8,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "analysis.python")
 public class AnalysisPythonProperties {
     private String baseUrl;          // 예: http://localhost:8081
-    private Integer connectTimeoutMs = 5000;
-    private Integer readTimeoutMs = 60000;
+    private Integer connectTimeoutMs = 50000000;
+    private Integer readTimeoutMs = 400000;
 }

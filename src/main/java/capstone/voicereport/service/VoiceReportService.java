@@ -80,7 +80,7 @@ public class VoiceReportService {
         List<ChangeProposal> proposals = r.getChangeProposals() != null ? r.getChangeProposals() : List.of();
 
         VoiceReportResponse resp = new VoiceReportResponse();
-        resp.setId(r.getId() == null ? null : r.getId().intValue());
+        resp.setId(r.getId());
         resp.setSubTitle(r.getSubTitle());
         resp.setDay(r.getDay());
         resp.setConversationSummary(r.getConversationSummary());
@@ -236,7 +236,7 @@ public class VoiceReportService {
     }
 
     @Transactional(readOnly = true)
-    public VoiceReportResponse get(Integer id) {
+    public VoiceReportResponse get(Long id) {
         VoiceReport r = voiceReportRepository.findById(id)
                 .orElseThrow(() -> VoiceReportException.notFound(id));
         return toDto(r);

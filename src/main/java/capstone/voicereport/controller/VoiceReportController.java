@@ -46,7 +46,7 @@ public class VoiceReportController {
 
     // 보이스리포트 단건 조회
     @GetMapping("/{id}")
-    public ResponseEntity<VoiceReportResponse> get(@PathVariable("id") Integer id) {
+    public ResponseEntity<VoiceReportResponse> get(@PathVariable("id") Long id) {
         return ResponseEntity.ok(voiceReportService.get(id));
     }
 

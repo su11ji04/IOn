@@ -24,7 +24,7 @@ public class VoiceReport {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @Column(name = "sub_title", length = 200)
     private String subTitle;
@@ -43,14 +43,18 @@ public class VoiceReport {
 
     @Builder.Default
     @ElementCollection
-    @CollectionTable(name = "voice_report_change_proposal",
-            joinColumns = @JoinColumn(name = "report_id"))
+    @CollectionTable(
+            name = "voice_report_change_proposal",
+            joinColumns = @JoinColumn(name = "report_id", referencedColumnName = "id")
+    )
     private List<ChangeProposal> changeProposals = new ArrayList<>();
 
     @Builder.Default
     @ElementCollection
-    @CollectionTable(name = "voice_report_emotion_timeline",
-            joinColumns = @JoinColumn(name = "report_id"))
+    @CollectionTable(
+            name = "voice_report_emotion_timeline",
+            joinColumns = @JoinColumn(name = "report_id", referencedColumnName = "id")
+    )
     @OrderColumn(name = "seq")
     private List<EmotionPoint> emotionTimeline = new ArrayList<>();
 

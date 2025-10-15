@@ -7,6 +7,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @Getter @Setter
 @ConfigurationProperties(prefix = "workbook.python")
 public class WorkbookPythonProperties {
-    private String baseUrl;
-    private Integer readTimeoutMs = 120000;
+    private String createBaseUrl;
+    private String feedbackBaseUrl;
+
+    private int connectTimeoutMs = 5_000;
+    private int readTimeoutMs = 120_000;
 }
