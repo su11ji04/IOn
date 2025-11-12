@@ -2,48 +2,103 @@ package capstone.user.controller;
 
 import capstone.user.service.UserService;
 import capstone.user.dto.*;
-import jakarta.transaction.Transactional;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.Part;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import capstone.user.dto.UserRegisterDto;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Map;
-import java.util.Optional;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+import static capstone.user.error.UserException.loginBadCredentials;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/users")
+@RequestMapping("/api/membership")
 public class UserController {
 
     private final UserService userService;
 
-    //회원가입
-    @PostMapping("/register")
-    public ResponseEntity<UserResponse> register(@Valid @RequestBody UserRegisterRequest req) {
-        UserResponse res = userService.register(req);
-        return ResponseEntity.status(HttpStatus.CREATED).body(res);
+    // 회원가입
+    @PostMapping(
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<Void> register(
+            @RequestPart("user") String userJson,
+            @RequestPart(value = "user_image", required = false) MultipartFile user_image
+    ) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        UserRegisterDto req = mapper.readValue(userJson, UserRegisterDto.class);
+        userService.register(req, user_image);
+        return ResponseEntity.ok().build();
     }
+
+
+    // 유형검사 문항 보내기
+    @GetMapping
+    public ResponseEntity<List<PropensityTestContentDto>> propensityTestContent() {
+        return ResponseEntity.ok(userService.getAllTests());
+    }
+
+    //회원 정보 확인
+    @GetMapping("/{userId}")
+    public ResponseEntity<UserInformationCheckDto> checkInformation(@PathVariable int userId) {
+        return ResponseEntity.ok(userService.getUserInformationById(userId));
+    }
+
+    // 회원 정보 수정
+    @PostMapping(
+            value = "/modifyUserInformation",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<Void> modifyUserInformation(
+            HttpSession session,
+            @RequestPart(value = "user", required = false) Part userPart,
+            @RequestParam(value = "user", required = false) String userParam,
+            @RequestPart(value = "user_image", required = false) MultipartFile user_image
+    ) throws Exception {
+        Integer sessionId = (Integer) session.getAttribute("userId");
+        if (sessionId == null) throw loginBadCredentials();
+
+        String userJson = (userParam != null)
+                ? userParam
+                : (userPart != null ? new String(userPart.getInputStream().readAllBytes(), StandardCharsets.UTF_8) : null);
+
+        if (userJson == null || userJson.isBlank()) {
+            throw new IllegalArgumentException("user 파트(JSON)가 누락되었습니다.");
+        }
+
+        UserInformationModifyDto req = new ObjectMapper().readValue(userJson, UserInformationModifyDto.class);
+        userService.modifyInformation(sessionId, req, user_image);
+        return ResponseEntity.ok().build();
+    }
+
+    //유형검사 결과 조회
+    @GetMapping("/test-result/{userId}")
+    public ResponseEntity<PropensityTestResultDto> getTestResult(@PathVariable int userId) {
+        return ResponseEntity.ok(userService.getTestResultByUserId(userId));
+    }
+
 
     //로그인
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest req) {
-        LoginResponse res = userService.login(req);
-        HttpStatus status = res.isSuccess() ? HttpStatus.OK : HttpStatus.UNAUTHORIZED;
-        return ResponseEntity.status(status).body(res);
+    public ResponseEntity<Void> login(
+            @RequestBody AuthRequestDto req,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        userService.login(req, request, response);
+        return ResponseEntity.ok().build();
     }
 
-    //정보 조회
-    @GetMapping("/{userId}")
-    public ResponseEntity<UserResponse> getUser(@PathVariable("userId") Long userId) {
-        return ResponseEntity.ok(userService.getUser(userId));
-    }
-
-    @GetMapping("/by-email")
-    public ResponseEntity<UserResponse> getUserByEmail(@RequestParam("email") @Email String email) {
-        return ResponseEntity.of(userService.getUserByEmail(email)); // 200(바디 포함) 또는 404(바디 없음)
-    }
 
 }

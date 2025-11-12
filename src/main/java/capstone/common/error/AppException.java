@@ -1,21 +1,34 @@
 package capstone.common.error;
 
+import lombok.Getter;
+
+@Getter
 public class AppException extends RuntimeException {
-    public final ErrorCode code;
-    public final String details; // 로그용
+    private static final long serialVersionUID = 1L;
+
+    private final ErrorCode code;
+    private final String details; // 로그/추적용 추가 정보
 
     public AppException(ErrorCode code) {
-        super(code.defaultMessage);
+        super(code.getDefaultMessage());
         this.code = code;
         this.details = null;
     }
+
     public AppException(ErrorCode code, String message) {
-        super(message);
+        super((message == null || message.isBlank()) ? code.getDefaultMessage() : message);
         this.code = code;
         this.details = null;
     }
+
     public AppException(ErrorCode code, String message, String details) {
-        super(message);
+        super((message == null || message.isBlank()) ? code.getDefaultMessage() : message);
+        this.code = code;
+        this.details = details;
+    }
+
+    public AppException(ErrorCode code, String message, String details, Throwable cause) {
+        super((message == null || message.isBlank()) ? code.getDefaultMessage() : message, cause);
         this.code = code;
         this.details = details;
     }

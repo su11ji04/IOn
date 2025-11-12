@@ -37,7 +37,7 @@ public class PythonAnalysisClient {
         try {
             return pythonAnalyzerWebClient.post()
                     .uri("/api/voice-report")
-                    .header("user_id", userId)
+                    .header("user_id", "u001")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(BodyInserters.fromMultipartData(form))

@@ -25,24 +25,19 @@ public class VoiceReportController {
     private final CurrentUser currentUser;
 
     // 보이스 리포트 생성
-    @PostMapping(
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
-            produces = MediaType.APPLICATION_JSON_VALUE
-    )
-    public ResponseEntity<VoiceReportResponse> createVoiceReport(
-            HttpServletRequest request,
-            @RequestPart("video") MultipartFile video
-    ) throws Exception {
-
-        String userId = currentUser.getUserId(request);
-
-        if (video == null || video.isEmpty()) {
-            throw VoiceReportException.videoEmpty();
-        }
-
-        VoiceReportResponse resp = voiceReportService.createVoiceReportFromVideo(userId, video);
-        return ResponseEntity.ok(resp);
-    }
+//    @PostMapping(
+//            value = "/{userId}",
+//            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+//            produces = MediaType.APPLICATION_JSON_VALUE
+//    )
+//    public ResponseEntity<VoiceReportResponse> createVoiceReport(
+//            @PathVariable("userId") int userId,
+//            @RequestPart("video") MultipartFile video,
+//            HttpServletRequest request
+//    ) {
+//        VoiceReportResponse resp = voiceReportService.createVoiceReportFromVideo(userId, video);
+//        return ResponseEntity.ok(resp);
+//    }
 
     // 보이스리포트 단건 조회
     @GetMapping("/{id}")
@@ -57,6 +52,7 @@ public class VoiceReportController {
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size
     ) {
+        userId = "u001";
         Page<VoiceReportListResponse> p = voiceReportService.list(userId, PageRequest.of(page, size));
         return ResponseEntity.ok(
                 new PagedListResponse<>(p.getContent(), p.getTotalPages(), p.getSize())

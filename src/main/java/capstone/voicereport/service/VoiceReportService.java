@@ -1,7 +1,5 @@
 package capstone.voicereport.service;
 
-import capstone.support.userprofile.UserProfileLoader;
-import capstone.user.repository.UserRepository;
 import capstone.voicereport.dto.VoiceReportListResponse;
 import capstone.voicereport.dto.VoiceReportResponse;
 import capstone.voicereport.entity.*;
@@ -172,7 +170,7 @@ public class VoiceReportService {
             }
 
             VoiceReport report = new VoiceReport();
-            report.setUserId(userId);
+            report.setUserId("u001");
 
             if (ar == null) {
                 report.setSubTitle("보이스리포트_ERROR");

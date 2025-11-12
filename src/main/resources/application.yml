@@ -19,6 +19,8 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
     show-sql: false
     properties:
       hibernate:
@@ -51,15 +53,15 @@ uploads:
 # ffmpeg 실행 경로 및 변환 타임아웃(서비스 코드 @Value 사용)
 media:
   ffmpeg:
-    path: ffmpeg
+    path: /usr/bin/ffmpeg
   convert:
     timeoutSec: 120
 
 analysis:
   python:
     baseUrl: http://10.0.1.91:9095
-    connectTimeoutMs: 5000
-    readTimeoutMs: 500000
+    connectTimeoutMs: 50000
+    readTimeoutMs: 5000000
 
 workbook:
   python:
@@ -81,9 +83,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: "health,info"
   endpoint:
     health:
-      show-details: never
+      show-details: always
       probes:
         enabled: true
+

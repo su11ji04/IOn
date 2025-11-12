@@ -1,44 +1,60 @@
 package capstone.user.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.*;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
-@Table(name = "users", uniqueConstraints = @UniqueConstraint(columnNames = "email"))
+@Table(name = "`user`", uniqueConstraints = @UniqueConstraint(columnNames = "email"))
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class User {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Id
+    @Column(name = "user_id")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private int userId;
 
-    @Column(nullable = false, length = 120, unique = true)
+    @Column(name = "email", length = 320, nullable = false)
     private String email;
 
-    @Column(nullable = false, length = 200)
-    private String passwordHash;
+    @NotBlank
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @Column(name = "password", length = 255, nullable = false)
+    private String password;
 
-    @Column(nullable = false, length = 50)
+    @Column(name = "user_image", length = 3000)
+    private String user_image;
+
+    @Column(name = "parent_name", length = 2000)
+    private String parentName;
+
+    @Column(name = "parent_nickname", length = 2000)
     private String parentNickname;
 
-    @Column(length = 200)
+    @Column(name = "kids_id")
+    private Integer kidsId;
+
+    @Column(name = "kids_nickname", length = 2000)
+    private String kidsNickname;
+
+    @Column(name = "kids_age")
+    private Integer kidsAge;
+
+    @Column(name = "kids_tendency", length = 2000)
+    private String kidsTendency;
+
+    @Column(name = "kids_note", length = 2000)
+    private String kidsNote;
+
+    @Column(name = "goal", length = 2000)
     private String goal;
 
-    @Column(length = 200)
+    @Column(name = "worry", length = 2000)
     private String worry;
 
-    //개인정보 동의
-    @Column(nullable = false)
+    @Column(name = "personal_information_agree")
     private Integer personalInformationAgree;
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default
-    private List<Kid> kids = new ArrayList<>();
-
-    public void addKid(Kid kid) {
-        kids.add(kid);
-        kid.setUser(this);
-    }
 }
+

@@ -36,6 +36,7 @@ dependencies {
 	implementation("org.springframework.security:spring-security-crypto")
 	implementation("org.springframework.boot:spring-boot-starter-webflux")
 	implementation("org.apache.commons:commons-csv:1.11.0")
+	implementation ("com.fasterxml.jackson.core:jackson-databind")
 
 	runtimeOnly("com.h2database:h2")
 	runtimeOnly("com.mysql:mysql-connector-j")
