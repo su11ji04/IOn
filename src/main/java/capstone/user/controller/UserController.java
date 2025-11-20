@@ -2,12 +2,12 @@ package capstone.user.controller;
 
 import capstone.user.service.UserService;
 import capstone.user.dto.*;
+import capstone.workbook.service.WorkbookService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,21 +26,31 @@ import static capstone.user.error.UserException.loginBadCredentials;
 public class UserController {
 
     private final UserService userService;
+    private final WorkbookService workbookService;
 
     // 회원가입
     @PostMapping(
             consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE
     )
-    public ResponseEntity<Void> register(
+    public ResponseEntity<UserIdDto> register(
             @RequestPart("user") String userJson,
             @RequestPart(value = "user_image", required = false) MultipartFile user_image
     ) throws Exception {
+
         ObjectMapper mapper = new ObjectMapper();
         UserRegisterDto req = mapper.readValue(userJson, UserRegisterDto.class);
-        userService.register(req, user_image);
-        return ResponseEntity.ok().build();
+
+        // 1) 회원가입 진행 (트랜잭션 내부)
+        UserIdDto dto = userService.register(req, user_image);
+
+        // 2) 트랜잭션이 끝난 후에 Python 호출 (커밋 완료 상태)
+        workbookService.createCustomWorkbook(dto.getUserId());
+        workbookService.createCustomSimulations(dto.getUserId());
+
+        return ResponseEntity.ok(dto);
     }
+
 
 
     // 유형검사 문항 보내기
@@ -92,12 +102,13 @@ public class UserController {
 
     //로그인
     @PostMapping("/login")
-    public ResponseEntity<Void> login(
+    public ResponseEntity<SessionDto> login(
             @RequestBody AuthRequestDto req,
             HttpServletRequest request,
             HttpServletResponse response) {
-        userService.login(req, request, response);
-        return ResponseEntity.ok().build();
+
+        SessionDto sessionDto = userService.login(req, request, response);
+        return ResponseEntity.ok(sessionDto);
     }
 
 

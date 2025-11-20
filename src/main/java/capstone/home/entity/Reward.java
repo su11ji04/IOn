@@ -12,8 +12,7 @@ import lombok.*;
 @Builder
 public class Reward {
     @Column(name = "reward_id")
-    private Integer rewardId; // 리워드 ID
-
+    private Integer rewardId;
     @Column(name = "earned_at", length = 100)
-    private String earnedAt; // 리워드 내용
+    private String earnedAt; 
 }

@@ -6,7 +6,7 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public class VoiceReportListResponse {
-    private Long id;
+    private int reportId;
     private String subTitle;
     private String day;
 }

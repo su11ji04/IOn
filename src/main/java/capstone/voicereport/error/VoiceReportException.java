@@ -4,40 +4,18 @@ import capstone.common.error.AppException;
 import capstone.common.error.ErrorCode;
 
 public class VoiceReportException extends AppException {
-
     public VoiceReportException(ErrorCode code) { super(code); }
-
     public VoiceReportException(ErrorCode code, String message) { super(code, message); }
+    public VoiceReportException(ErrorCode code, String message, String details) { super(code, message, details); }
+    public VoiceReportException(ErrorCode code, String message, String details, Throwable cause) { super(code, message, details, cause); }
 
-    // ====== factories ======
-    public static VoiceReportException notFound(Long id) {
-        return new VoiceReportException(ErrorCode.VR_NOT_FOUND,
-                "보이스리포트를 찾을 수 없습니다. id=" + id);
-    }
-
-    public static VoiceReportException videoEmpty() {
-        return new VoiceReportException(ErrorCode.VR_AUDIO_EMPTY);
-    }
-
-    public static VoiceReportException videoUnsupported(String msg) {
-        return new VoiceReportException(
-                ErrorCode.VR_AUDIO_UNSUPPORTED,
-                (msg != null && !msg.isBlank()) ? msg : ErrorCode.VR_AUDIO_UNSUPPORTED.getDefaultMessage()
-        );
-    }
-
-    public static VoiceReportException videoCorrupted() {
-        return new VoiceReportException(ErrorCode.VR_AUDIO_CORRUPTED);
-    }
-
-    public static VoiceReportException audioTooLong(String details) {
-        return new VoiceReportException(
-                ErrorCode.VR_AUDIO_TOO_LONG,
-                (details != null && !details.isBlank()) ? details : ErrorCode.VR_AUDIO_TOO_LONG.getDefaultMessage()
-        );
-    }
-
-    public static VoiceReportException analysisTimeout() {
-        return new VoiceReportException(ErrorCode.VR_ANALYSIS_TIMEOUT);
-    }
+    // 편의 팩토리
+    public static VoiceReportException loginRequired()        { return new VoiceReportException(ErrorCode.VR_LOGIN_REQUIRED); }
+    public static VoiceReportException forbidden()            { return new VoiceReportException(ErrorCode.VR_FORBIDDEN); }
+    public static VoiceReportException notFound()             { return new VoiceReportException(ErrorCode.VR_NOT_FOUND); }
+    public static VoiceReportException payloadEmpty()         { return new VoiceReportException(ErrorCode.VR_PAYLOAD_EMPTY); }
+    public static VoiceReportException unsupportedMedia()     { return new VoiceReportException(ErrorCode.VR_UNSUPPORTED_MEDIA); }
+    public static VoiceReportException uploadError(String d)  { return new VoiceReportException(ErrorCode.VR_UPLOAD_ERROR, null, d); }
+    public static VoiceReportException analysisError(String d){ return new VoiceReportException(ErrorCode.VR_ANALYSIS_ERROR, null, d); }
+    public static VoiceReportException timeout(String d)      { return new VoiceReportException(ErrorCode.VR_TIMEOUT, null, d); }
 }

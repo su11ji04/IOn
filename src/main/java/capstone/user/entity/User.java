@@ -25,7 +25,7 @@ public class User {
     private String password;
 
     @Column(name = "user_image", length = 3000)
-    private String user_image;
+    private String userImage;
 
     @Column(name = "parent_name", length = 2000)
     private String parentName;
@@ -56,5 +56,8 @@ public class User {
 
     @Column(name = "personal_information_agree")
     private Integer personalInformationAgree;
+
+    @Column(name = "now_chapter")
+    private Integer nowChapter;
 }
 

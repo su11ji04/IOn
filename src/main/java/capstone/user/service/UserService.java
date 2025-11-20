@@ -1,6 +1,7 @@
 package capstone.user.service;
 
 import capstone.common.service.FileStorageService;
+import capstone.home.entity.Reward;
 import capstone.home.entity.UserProfile;
 import capstone.user.dto.*;
 import capstone.user.entity.User;
@@ -10,8 +11,11 @@ import capstone.user.entity.SubtypeScore;
 import capstone.user.repository.PropensityTestRepository;
 import capstone.user.repository.PropensityTestResultRepository;
 import capstone.user.repository.UserRepository;
+import capstone.workbook.service.WorkbookService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.ZoneId;
+
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,6 +28,8 @@ import org.springframework.transaction.annotation.Transactional;
 import capstone.home.repository.UserProfileRepository;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import static capstone.user.error.UserException.*;
 
@@ -37,6 +43,7 @@ public class UserService {
     private final PropensityTestResultRepository propensityTestResultRepository;
     private final UserProfileRepository userProfileRepository;
     private final FileStorageService fileStorageService;
+    private final WorkbookService workbookService;
 
     // 하위 타입: 문항 ID 목록
     private static final Map<String, List<Integer>> SUBTYPE_ITEMS = Map.of(
@@ -76,7 +83,7 @@ public class UserService {
 
     // 회원가입
     @Transactional
-    public void register(UserRegisterDto req,  MultipartFile image) {
+    public UserIdDto register(UserRegisterDto req,  MultipartFile image) {
         // 기본 검증
         if (userRepository.existsByEmail(req.getEmail())) {
             throw emailDuplicate();
@@ -104,7 +111,7 @@ public class UserService {
         User user = User.builder()
                 .email(req.getEmail())
                 .password(hashed)
-                .user_image(imageUrl)
+                .userImage(imageUrl)
                 .parentName(req.getParentName())
                 .parentNickname(req.getParentNickname())
                 .kidsId(1)
@@ -115,8 +122,8 @@ public class UserService {
                 .goal(req.getGoal())
                 .worry(req.getWorry())
                 .personalInformationAgree(req.getPersonalInformationAgree())
+                .nowChapter(1)
                 .build();
-        userRepository.save(user);
 
         User saved = userRepository.save(user);
 
@@ -176,21 +183,35 @@ public class UserService {
         propensityTestResultRepository.save(result);
 
         UserProfile userProfile = UserProfile.builder()
+                .userImage(user.getUserImage())
                 .userId(saved.getUserId())
                 .level(1)
                 .parentNickname(saved.getParentNickname())
                 .points(0)
                 .streakDay(0)
                 .phrase("자식을 불행하게하는 가장 확실한 방법은 언제나 무엇이든지 손에 넣을 수 있게 해주는 일이다.")
-                .activityFrequency(0)
+                .monthFrequency(0)
+                .voicereportFrequency(0)
                 .chatBotFrequency(0)
                 .workBookFrequency(0)
                 .message("첫 방문을 환영합니다! 오늘의 첫 워크북을 시작해보세요 :)")
                 .reward(new ArrayList<>())
+                .usedVoiceReportOnce(0)
+                .finishedWorkbookOnce(0)
+                .usedChatbotOnce(0)
+                .lastLoginDate(null)
                 .build();
-
+        String nowStr = LocalDateTime.now(ZoneId.of("Asia/Seoul"))
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        Reward firstReward = Reward.builder()
+                .rewardId(1)
+                .earnedAt(nowStr)
+                .build();
+        userProfile.getReward().add(firstReward);
 
         userProfileRepository.save(userProfile);
+
+        return new UserIdDto(saved.getUserId());
     }
 
     // 회원 정보 확인
@@ -229,10 +250,9 @@ public class UserService {
         }
 
         // user_image update
-        String imageUrl = null;
         if (user_image != null && !user_image.isEmpty()) {
-            imageUrl = fileStorageService.save(user_image);
-            user.setUser_image(imageUrl);
+            String imageUrl = fileStorageService.save(user_image);
+            user.setUserImage(imageUrl);
         }
 
         // 기본 정보 업데이트
@@ -246,80 +266,82 @@ public class UserService {
         user.setWorry(req.getWorry());
         user.setPersonalInformationAgree(req.getPersonalInformationAgree());
 
-        // 성향 점수 수정
-        if (req.getPropensityTest() != null && !req.getPropensityTest().isEmpty()) {
-
-            // 점수 검증 + 수집 (int 유지)
-            Map<Integer, Integer> incomingScores = new LinkedHashMap<>();
-            for (UserInformationModifyDto.PropensityTestDto dto : req.getPropensityTest()) {
-                int score = dto.getPropensityTestScore();
-                if (score < 1 || score > 6) {
-                    throw scoreOutOfRange(dto.getPropensityTestId());
-                }
-                incomingScores.put(dto.getPropensityTestId(), score);
-            }
-
-            // 최근 결과
-            PropensityTestResult result = propensityTestResultRepository
-                    .findTopByUserIdOrderByResultIdDesc(user.getUserId())
-                    .orElseThrow(() -> resultNotFound());
-
-            // 기존 + 신규 머지
-            Map<Integer, Integer> mergedScoreMap = new LinkedHashMap<>();
-            if (result.getListScores() != null) {
-                mergedScoreMap.putAll(toMap(result.getListScores())); // List -> Map
-            }
-            incomingScores.forEach(mergedScoreMap::put); // 최신 점수로 덮어쓰기
-
-            // 서브타입 평균 재계산
-            Map<String, Double> subtypeAvg = new LinkedHashMap<>();
-            List<SubtypeScore> subtypeEntities = new ArrayList<>();
-            for (var entry : SUBTYPE_ITEMS.entrySet()) {
-                String subtypeName = entry.getKey();
-                List<Integer> items = entry.getValue();
-
-                double avg = items.stream()
-                        .mapToDouble(q -> {
-                            Integer s = mergedScoreMap.get(q);
-                            if (s == null) {
-                                throw invalidInput("문항 " + q + " 점수가 없습니다.");
-                            }
-                            return s; // int -> double 자동승격
-                        })
-                        .average()
-                        .orElse(Double.NaN);
-
-                subtypeAvg.put(subtypeName, avg);
-                subtypeEntities.add(SubtypeScore.builder()
-                        .type(subtypeName)
-                        .score(avg)
-                        .build());
-            }
-
-            // 상위 타입 평균
-            double authoritativeAvg = mean(subtypeAvg, TYPE_TO_SUBTYPES.get(AUTHORITATIVE));
-            double authoritarianAvg = mean(subtypeAvg, TYPE_TO_SUBTYPES.get(AUTHORITARIAN));
-            double permissiveAvg = mean(subtypeAvg, TYPE_TO_SUBTYPES.get(PERMISSIVE));
-
-            Map<String, Double> typeScores = new LinkedHashMap<>();
-            typeScores.put(AUTHORITATIVE, authoritativeAvg);
-            typeScores.put(AUTHORITARIAN, authoritarianAvg);
-            typeScores.put(PERMISSIVE, permissiveAvg);
-
-            // 최대 타입
-            String userType = typeScores.entrySet().stream()
-                    .max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElseThrow(() -> invalidInput("유형을 결정할 수 없습니다."));
-
-            // 결과 반영 후 저장
-            result.setListScores(toList(mergedScoreMap)); // Map -> List
-            result.setUserType(userType);
-            result.setTestScores(typeScores);
-            result.setSubtype(subtypeEntities);
-
-            propensityTestResultRepository.save(result);
+        // 유형 검사 결과 update(선택)
+        if (req.getPropensityTest() == null || req.getPropensityTest().isEmpty()) {
+            return;
         }
+
+        // 점수 검증 + 수집 (int 유지)
+        Map<Integer, Integer> incomingScores = new LinkedHashMap<>();
+        for (UserInformationModifyDto.PropensityTestDto dto : req.getPropensityTest()) {
+            int score = dto.getPropensityTestScore();
+            if (score < 1 || score > 6) {
+                throw scoreOutOfRange(dto.getPropensityTestId());
+            }
+            incomingScores.put(dto.getPropensityTestId(), score);
+        }
+
+        // 최근 결과
+        PropensityTestResult result = propensityTestResultRepository
+                .findTopByUserIdOrderByResultIdDesc(user.getUserId())
+                .orElseThrow(() -> resultNotFound());
+
+        // 기존 + 신규 merge
+        Map<Integer, Integer> mergedScoreMap = new LinkedHashMap<>();
+        if (result.getListScores() != null) {
+            mergedScoreMap.putAll(toMap(result.getListScores())); // List -> Map
+        }
+        incomingScores.forEach(mergedScoreMap::put);
+
+        // 서브타입 평균 재계산
+        Map<String, Double> subtypeAvg = new LinkedHashMap<>();
+        List<SubtypeScore> subtypeEntities = new ArrayList<>();
+
+        for (var entry : SUBTYPE_ITEMS.entrySet()) {
+            String subtypeName = entry.getKey();
+            List<Integer> items = entry.getValue();
+
+            double avg = items.stream()
+                    .mapToDouble(q -> {
+                        Integer s = mergedScoreMap.get(q);
+                        if (s == null) {
+                            throw invalidInput("문항 " + q + " 점수가 없습니다.");
+                        }
+                        return s;
+                    })
+                    .average()
+                    .orElse(Double.NaN);
+
+            subtypeAvg.put(subtypeName, avg);
+            subtypeEntities.add(SubtypeScore.builder()
+                    .type(subtypeName)
+                    .score(avg)
+                    .build());
+        }
+
+        // 상위 타입 평균
+        double authoritativeAvg = mean(subtypeAvg, TYPE_TO_SUBTYPES.get(AUTHORITATIVE));
+        double authoritarianAvg = mean(subtypeAvg, TYPE_TO_SUBTYPES.get(AUTHORITARIAN));
+        double permissiveAvg    = mean(subtypeAvg, TYPE_TO_SUBTYPES.get(PERMISSIVE));
+
+        Map<String, Double> typeScores = new LinkedHashMap<>();
+        typeScores.put(AUTHORITATIVE, authoritativeAvg);
+        typeScores.put(AUTHORITARIAN, authoritarianAvg);
+        typeScores.put(PERMISSIVE, permissiveAvg);
+
+        // 최대 타입
+        String userType = typeScores.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElseThrow(() -> invalidInput("유형을 결정할 수 없습니다."));
+
+        // 결과 반영 후 저장
+        result.setListScores(toList(mergedScoreMap));
+        result.setUserType(userType);
+        result.setTestScores(typeScores);
+        result.setSubtype(subtypeEntities);
+
+        propensityTestResultRepository.save(result);
     }
 
     // 유형 검사 결과 불러오기
@@ -368,7 +390,7 @@ public class UserService {
 
     // 로그인
     @Transactional(readOnly = true)
-    public void login(AuthRequestDto req,
+    public SessionDto login(AuthRequestDto req,
                       HttpServletRequest request,
                       HttpServletResponse response)
     {
@@ -378,18 +400,24 @@ public class UserService {
             throw loginBadCredentials();
         }
 
-        // 2) 인증 토큰 생성 (권한은 상황에 맞게)
+        // 1) 인증 토큰 생성
         var auth = new UsernamePasswordAuthenticationToken(
                 u.getEmail(), null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
 
-        // 3) SecurityContext에 넣고, 세션에 저장
+        // 2) SecurityContext에 넣고, 세션에 저장
         var context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(auth);
         SecurityContextHolder.setContext(context);
         new HttpSessionSecurityContextRepository().saveContext(context, request, response);
 
-        // (선택) 추가로 세션에 도메인용 값 저장
-        request.getSession(true).setAttribute("userId", u.getUserId());
+        // 3) 세션에 userId 저장 + 세션 아이디 가져오기
+        HttpSession session = request.getSession(true);
+        session.setAttribute("userId", u.getUserId());
+        String sessionId = session.getId();          // ★ 여기!
+
+        return SessionDto.builder()
+                .sessionId(sessionId)
+                .build();
     }
 
     // List<TestListScore> -> Map<Integer, Integer>

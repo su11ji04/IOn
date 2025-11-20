@@ -10,7 +10,6 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 @Component
 @RequiredArgsConstructor
@@ -18,9 +17,8 @@ public class PythonAnalysisClient {
 
     private final @Qualifier("pythonAnalyzerWebClient") WebClient pythonAnalyzerWebClient;
 
-    public VoiceReportResponse analyze(byte[] wavBytes, String userId) {
+    public VoiceReportResponse analyze(byte[] wavBytes, int userId) {
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
-
         ByteArrayResource fileRes = new ByteArrayResource(wavBytes) {
             @Override
             public String getFilename() {
@@ -32,12 +30,12 @@ public class PythonAnalysisClient {
         fileHeaders.setContentType(MediaType.parseMediaType("audio/wav"));
 
         form.add("audio", new HttpEntity<>(fileRes, fileHeaders));
-        form.add("report_id", "1");
+        form.add("reportId", 100);
 
         try {
             return pythonAnalyzerWebClient.post()
                     .uri("/api/voice-report")
-                    .header("user_id", "u001")
+                    .header("userId", String.valueOf(userId))
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(BodyInserters.fromMultipartData(form))

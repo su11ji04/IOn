@@ -16,7 +16,7 @@ public class UserInformationModifyDto {
     @NotBlank
     private String password;
 
-    private String user_image;
+    private String userImage;
     @NotBlank
     private String parentName;
     @NotBlank

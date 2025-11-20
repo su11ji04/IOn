@@ -1,7 +1,12 @@
 package capstone.voicereport.service;
 
+import capstone.home.entity.UserProfile;
+import capstone.home.repository.UserProfileRepository;
+import capstone.user.entity.User;
+import capstone.user.repository.UserRepository;
 import capstone.voicereport.dto.VoiceReportListResponse;
 import capstone.voicereport.dto.VoiceReportResponse;
+import capstone.voicereport.dto.VoiceReportSummaryDto;
 import capstone.voicereport.entity.*;
 import capstone.voicereport.error.VoiceReportException;
 import capstone.voicereport.repository.VoiceReportRepository;
@@ -20,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -29,10 +35,11 @@ public class VoiceReportService {
 
     private final VoiceReportRepository voiceReportRepository;
     private final PythonAnalysisClient pythonAnalysisClient;
+    private final UserRepository userRepository;
+    private final UserProfileRepository userProfileRepository;
 
     @Value("${media.ffmpeg.path:ffmpeg}")
     private String ffmpegPath;
-
     @Value("${media.convert.timeoutSec:120}")
     private long convertTimeoutSec;
 
@@ -42,7 +49,7 @@ public class VoiceReportService {
         return dir;
     }
 
-    // 영상 -> 음성 변환
+    // 파일 변환(영상 -> 음성)
     private void convertToWav16kMono(Path input, Path outWav) {
         List<String> cmd = List.of(
                 ffmpegPath, "-y",
@@ -74,11 +81,16 @@ public class VoiceReportService {
 
     // 보이스리포트 응답 DTO 생성
     private VoiceReportResponse toDto(VoiceReport r) {
-        List<EmotionPoint> timeline = r.getEmotionTimeline() != null ? r.getEmotionTimeline() : List.of();
-        List<ChangeProposal> proposals = r.getChangeProposals() != null ? r.getChangeProposals() : List.of();
+        List<EmotionPoint> timeline = (r.getEmotionTimeline() != null) ? r.getEmotionTimeline() : List.of();
+        List<ChangeProposal> proposals = (r.getChangeProposals() != null) ? r.getChangeProposals() : List.of();
+
+        int userId = r.getUserId();
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("User not found: " + userId));
 
         VoiceReportResponse resp = new VoiceReportResponse();
-        resp.setId(r.getId());
+        resp.setKidsNickname(user.getKidsNickname());
+        resp.setReportId(r.getReportId());
         resp.setSubTitle(r.getSubTitle());
         resp.setDay(r.getDay());
         resp.setConversationSummary(r.getConversationSummary());
@@ -131,46 +143,53 @@ public class VoiceReportService {
 
     // 보이스리포트 생성
     @Transactional
-    public VoiceReportResponse createVoiceReportFromVideo(String userId, MultipartFile video) throws IOException {
+    public VoiceReportResponse createVoiceReportFromVideo(int userId, MultipartFile video) {
         if (video == null || video.isEmpty()) {
-            throw VoiceReportException.videoEmpty();
+            throw VoiceReportException.uploadError("empty multipart file");
         }
-
         final String originalName = StringUtils.cleanPath(
                 video.getOriginalFilename() == null ? "upload" : video.getOriginalFilename()
         );
         final String inExt = originalName.contains(".")
                 ? originalName.substring(originalName.lastIndexOf('.'))
                 : "";
-        final Path inTemp = Files.createTempFile("in_", inExt);
-        Files.copy(video.getInputStream(), inTemp, StandardCopyOption.REPLACE_EXISTING);
+        Path inTemp = null;
+        Path outWav = null;
 
-        final Path outWav = Files.createTempFile("vr_", ".wav");
+        User user = userRepository.findByUserId(userId)
+                .orElseThrow(() -> VoiceReportException.uploadError("user not found: " + userId));
 
         try {
-            // 영상 -> 오디오 변환
+            // 임시 파일 저장
+            inTemp = Files.createTempFile("in_", inExt);
+            outWav = Files.createTempFile("vr_", ".wav");
+            try (var in = video.getInputStream()) {
+                Files.copy(in, inTemp, StandardCopyOption.REPLACE_EXISTING);
+            } catch (Exception e) {
+                throw VoiceReportException.uploadError("store temp: " + e.getMessage());
+            }
+
+            // ffmpeg 변환 (convertError 없으므로 uploadError로 통일)
             try {
                 convertToWav16kMono(inTemp, outWav);
-            } catch (RuntimeException e) {
-                // ffmpeg 오류
-                throw VoiceReportException.videoCorrupted();
+            } catch (Exception e) {
+                throw VoiceReportException.uploadError("ffmpeg: " + e.getMessage());
             }
 
-            // Python 분석 요청
-            byte[] wavBytes = Files.readAllBytes(outWav);
+            // Python 분석
             VoiceReportResponse ar;
             try {
+                byte[] wavBytes = Files.readAllBytes(outWav);
                 ar = pythonAnalysisClient.analyze(wavBytes, userId);
-            } catch (PythonAnalysisClient.PythonBadRequestException e) {
-                throw VoiceReportException.videoUnsupported("python 400: " + e.getMessage());
-            } catch (PythonAnalysisClient.PythonServerException e) {
-                throw VoiceReportException.analysisTimeout(); // 분석 엔진 오류 or timeout
+            } catch (java.net.SocketTimeoutException te) {
+                throw VoiceReportException.timeout("python analyze timeout");
             } catch (Exception e) {
-                throw VoiceReportException.analysisTimeout();
+                throw VoiceReportException.analysisError("python analyze: " + e.getMessage());
             }
 
+            // 엔티티 매핑
             VoiceReport report = new VoiceReport();
-            report.setUserId("u001");
+            report.setUserId(userId);
 
             if (ar == null) {
                 report.setSubTitle("보이스리포트_ERROR");
@@ -190,6 +209,7 @@ public class VoiceReportService {
                             .expressionFeedback(ar.getExpression().getExpressionFeedback())
                             .build());
                 }
+
                 if (ar.getChangeProposal() != null) {
                     report.setChangeProposals(
                             ar.getChangeProposal().stream()
@@ -200,6 +220,7 @@ public class VoiceReportService {
                                     .toList()
                     );
                 }
+
                 if (ar.getEmotion() != null) {
                     report.setEmotionFeedback(ar.getEmotion().getEmotionFeedback());
                     if (ar.getEmotion().getTimeline() != null) {
@@ -213,7 +234,9 @@ public class VoiceReportService {
                         );
                     }
                 }
+
                 report.setKidAttitude(ar.getKidAttitude());
+
                 if (ar.getFrequency() != null) {
                     report.setFrequency(Frequency.builder()
                             .parentFrequency(ar.getFrequency().getParentFrequency())
@@ -221,27 +244,96 @@ public class VoiceReportService {
                             .frequencyFeedback(ar.getFrequency().getFrequencyFeedback())
                             .build());
                 }
+
                 report.setStrength(ar.getStrength());
             }
 
+            // 저장
             VoiceReport saved = voiceReportRepository.save(report);
+
+            // 응답 DTO로 변환
+            VoiceReportResponse resp = toDto(saved);
+
+            // kidsNickname
+            String kidsNickname = (ar != null && ar.getKidsNickname() != null && !ar.getKidsNickname().isBlank())
+                    ? ar.getKidsNickname()
+                    : user.getKidsNickname();
+            if (resp != null) {
+                resp.setKidsNickname(kidsNickname);
+            }
+
+            UserProfile p = userProfileRepository.findByUserId(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("해당 유저 프로필이 존재하지 않습니다."));
+            p.setUsedVoiceReportOnce(1);
+            int vFrequency = p.getVoicereportFrequency() + 1;
+            p.setVoicereportFrequency(vFrequency);
+            int nowPoints = p.getPoints();
+            p.setPoints(nowPoints+4);
+
             return toDto(saved);
 
+        } catch (IOException ioe) {
+            throw VoiceReportException.uploadError("io: " + ioe.getMessage());
         } finally {
-            try { Files.deleteIfExists(inTemp); } catch (Exception ignore) {}
-            try { Files.deleteIfExists(outWav); } catch (Exception ignore) {}
+            try { if (inTemp != null) Files.deleteIfExists(inTemp); } catch (Exception ignore) {}
+            try { if (outWav != null) Files.deleteIfExists(outWav); } catch (Exception ignore) {}
         }
     }
 
+    // 보이스리포트 단건 조회
     @Transactional(readOnly = true)
-    public VoiceReportResponse get(Long id) {
-        VoiceReport r = voiceReportRepository.findById(id)
-                .orElseThrow(() -> VoiceReportException.notFound(id));
-        return toDto(r);
+    public VoiceReportResponse getOneVoicereport(int userId, int reportId) {
+        VoiceReport r = voiceReportRepository
+                .findByReportIdAndUserId(reportId, userId)
+                .orElseThrow(VoiceReportException::notFound);
+        User user = userRepository.findByUserId(userId)
+                .orElseThrow(() -> VoiceReportException.uploadError("user not found: " + userId));
+        VoiceReportResponse dto = toDto(r);
+        dto.setKidsNickname(user.getKidsNickname());
+        return dto;
     }
 
+    // 보이스리포트 목록 조회
     @Transactional(readOnly = true)
-    public Page<VoiceReportListResponse> list(String userId, Pageable pageable) {
+    public Page<VoiceReportListResponse> list(int userId, Pageable pageable) {
         return voiceReportRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+    }
+
+    // 보이스리포트 요약
+    @Transactional(readOnly = true)
+    public VoiceReportSummaryDto getSummary(int userId) {
+        VoiceReport r = voiceReportRepository
+                .findTop1ByUserIdOrderByReportIdDesc(userId)
+                .orElseThrow(VoiceReportException::notFound);
+
+        VoiceReportSummaryDto dto = new VoiceReportSummaryDto();
+
+        // momentEmotion
+        List<EmotionPoint> timeline = Optional.ofNullable(r.getEmotionTimeline()).orElseGet(List::of);
+        if (!timeline.isEmpty()) {
+            int idx = ThreadLocalRandom.current().nextInt(timeline.size());
+            dto.setMomentEmotion(timeline.get(idx).getMomentEmotion());
+        } else {
+            dto.setMomentEmotion(null);
+        }
+
+        // Frequency
+        if (r.getFrequency() != null) {
+            dto.setParentFrequency(r.getFrequency().getParentFrequency());
+            dto.setKidFrequency(r.getFrequency().getKidFrequency());
+        } else {
+            dto.setParentFrequency(null);
+            dto.setKidFrequency(null);
+        }
+
+        // ChangeProposal
+        List<ChangeProposal> cps = Optional.ofNullable(r.getChangeProposals()).orElseGet(List::of);
+        if (r.getOverallFeedback() != null) {
+            dto.setOverallFeedback(r.getOverallFeedback());
+        } else {
+            dto.setOverallFeedback(null);
+        }
+
+        return dto;
     }
 }

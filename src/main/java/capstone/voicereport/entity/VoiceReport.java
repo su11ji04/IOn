@@ -20,11 +20,12 @@ import java.util.List;
 public class VoiceReport {
 
     @Column(name = "user_id", length = 100)
-    private String userId;
+    private int userId;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "report_id")
+    private int reportId;
 
     @Column(name = "sub_title", length = 200)
     private String subTitle;
@@ -45,7 +46,7 @@ public class VoiceReport {
     @ElementCollection
     @CollectionTable(
             name = "voice_report_change_proposal",
-            joinColumns = @JoinColumn(name = "report_id", referencedColumnName = "id")
+            joinColumns = @JoinColumn(name = "report_id")
     )
     private List<ChangeProposal> changeProposals = new ArrayList<>();
 
@@ -53,7 +54,7 @@ public class VoiceReport {
     @ElementCollection
     @CollectionTable(
             name = "voice_report_emotion_timeline",
-            joinColumns = @JoinColumn(name = "report_id", referencedColumnName = "id")
+            joinColumns = @JoinColumn(name = "report_id")
     )
     @OrderColumn(name = "seq")
     private List<EmotionPoint> emotionTimeline = new ArrayList<>();

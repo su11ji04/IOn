@@ -1,6 +1,5 @@
 package capstone.user.error;
 
-import capstone.user.controller.UserController;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.core.Ordered;
@@ -10,10 +9,9 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
-@RestControllerAdvice(assignableTypes = { UserController.class })
+@RestControllerAdvice(basePackages = "capstone.user.controller")
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class UserExceptionHandler {
 

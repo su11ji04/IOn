@@ -46,6 +46,7 @@ logging:
     root: INFO
     org.springframework.boot.autoconfigure: INFO
     org.hibernate.SQL: INFO
+    org.springframework.web.reactive.function.client: DEBUG
 
 uploads:
   voice-dir: /var/app/uploads/voice
@@ -65,9 +66,11 @@ analysis:
 
 workbook:
   python:
-    create-base-url: http://10.0.1.91:9096
-    feedback-base-url: http://10.0.1.91:9098
-    read-timeout-ms: 120000
+    base-url-create: http://10.0.1.91:9096       # Workbook + Simulation 생성 서버
+    base-url-feedback: http://10.0.1.91:9098    # Workbook Feedback + Simulation Feedback 서버
+    connect-timeout-ms: 50000
+    read-timeout-ms: 600000
+
 
 chatbot:
   python:

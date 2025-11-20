@@ -8,25 +8,31 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
+
 public interface VoiceReportRepository extends JpaRepository<VoiceReport, Long> {
 
+    // 목록 (지금 있는 쿼리 그대로 OK)
     @Query(
             value = """
-            select new capstone.voicereport.dto.VoiceReportListResponse(
-                v.id, v.subTitle, v.day
-            )
-            from VoiceReport v
-            where v.userId = :userId
-            order by v.createdAt desc
-            """,
+        select new capstone.voicereport.dto.VoiceReportListResponse(
+            v.reportId, v.subTitle, v.day
+        )
+        from VoiceReport v
+        where v.userId = :userId
+        order by v.createdAt desc
+        """,
             countQuery = """
-            select count(v)
-            from VoiceReport v
-            where v.userId = :userId
-            """
+        select count(v)
+        from VoiceReport v
+        where v.userId = :userId
+        """
     )
     Page<VoiceReportListResponse> findByUserIdOrderByCreatedAtDesc(
-            @Param("userId") String userId, Pageable pageable
+            @Param("userId") int userId, Pageable pageable
     );
-}
 
+    Optional<VoiceReport> findByReportIdAndUserId(int reportId, int userId);
+    Optional<VoiceReport> findTop1ByUserIdOrderByReportIdDesc(int userId);
+    Optional<VoiceReport> findTop1ByUserIdOrderByCreatedAtDesc(int userId);
+}
